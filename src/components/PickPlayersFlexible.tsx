@@ -70,6 +70,14 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     loadUserSelections();
   }, [userId]);
 
+  useEffect(() => {
+    // Keep local budget in sync if parent updates the team value (e.g. after team selection).
+    setInitialBudget(teamValue);
+    if (selectedPlayers.length === 0) {
+      setRemainingBudget(teamValue);
+    }
+  }, [teamValue, selectedPlayers.length]);
+
   const checkTacticSelection = async () => {
     const { data } = await supabase
       .from('user_tactic_selection')
@@ -118,15 +126,34 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     try {
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('team_value, players_locked, position_groups')
+        .select('team_value, players_locked, position_groups, selected_team_id')
         .eq('id', userId)
         .maybeSingle();
 
       console.log('Profile data:', profile);
 
+      let resolvedBudget = profile?.team_value ?? teamValue;
+
+      // Fallback to the selected team's value if the profile budget is missing.
+      if ((!resolvedBudget || resolvedBudget === 0) && profile?.selected_team_id) {
+        const { data: teamRow, error: teamError } = await supabase
+          .from('teams')
+          .select('team_value')
+          .eq('id', profile.selected_team_id)
+          .maybeSingle();
+
+        if (!teamError && teamRow?.team_value) {
+          resolvedBudget = teamRow.team_value;
+        }
+      }
+
+      // As an absolute fallback, keep the prop value.
+      if (!resolvedBudget) {
+        resolvedBudget = teamValue;
+      }
+
       if (profile) {
-        const budget = profile.team_value || teamValue;
-        setInitialBudget(budget);
+        setInitialBudget(resolvedBudget);
         setIsLocked(profile.players_locked || false);
         setPositionGroups(profile.position_groups);
         console.log('Position groups set to:', profile.position_groups);
@@ -148,12 +175,12 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
           setSelectedPlayers(selectedPlayersData);
 
           const totalSpent = selectedPlayersData.reduce((sum, p) => sum + p.value, 0);
-          const remaining = (profile?.team_value || teamValue) - totalSpent;
+          const remaining = resolvedBudget - totalSpent;
           setRemainingBudget(remaining);
-          console.log('Budget calculation - Initial:', profile?.team_value || teamValue, 'Spent:', totalSpent, 'Remaining:', remaining);
+          console.log('Budget calculation - Initial:', resolvedBudget, 'Spent:', totalSpent, 'Remaining:', remaining);
         }
       } else {
-        setRemainingBudget(profile?.team_value || teamValue);
+        setRemainingBudget(resolvedBudget);
       }
     } catch (err) {
       console.error('Error loading user selections:', err);
@@ -352,8 +379,23 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-cyan-600 to-green-500">
-      <div className="bg-gradient-to-b from-black to-transparent py-6 px-6">
+    <div className="min-h-screen bg-gradient-to-b from-black via-cyan-600 to-green-500 relative overflow-hidden">
+      <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+        <img
+          src="/campo de futebol 1.webp"
+          alt="Football field"
+          className="max-w-5xl w-full h-auto object-contain"
+        />
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center opacity-15 pointer-events-none">
+        <img
+          src="/Pick_Your_Players.png"
+          alt="Pick your players watermark"
+          className="max-w-3xl w-full h-auto object-contain"
+        />
+      </div>
+
+      <div className="bg-gradient-to-b from-black to-transparent py-6 px-6 relative z-10">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           {onBack && (
             <button
@@ -366,9 +408,9 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
 
           <div className="flex items-center gap-3">
             <img
-              src="/ChatGPT Image 4_10_2025, 11_26_23.png"
-              alt="FL Logo"
-              className="w-12 h-12"
+              src="/Pick_Your_Players.png"
+              alt="Pick your players"
+              className="w-14 h-14 object-contain drop-shadow-[0_0_10px_rgba(0,0,0,0.6)]"
             />
           </div>
 
