@@ -55,8 +55,9 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
   const [initialBudget, setInitialBudget] = useState(teamValue);
   const [remainingBudget, setRemainingBudget] = useState(teamValue);
-  const [heroSrc, setHeroSrc] = useState('/fl-dragon.png');
-  const [watermarkSrc, setWatermarkSrc] = useState('/fl-dragon.png');
+  // Use existing asset name; fallbacks keep a logo visible even if the asset is missing.
+  const [heroSrc, setHeroSrc] = useState('/Pick_Your_Players.png');
+  const [watermarkSrc, setWatermarkSrc] = useState('/Pick_Your_Players.png');
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -394,7 +395,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
           src={watermarkSrc}
           alt="FL Dragon watermark"
           className="max-w-4xl w-full h-auto object-contain drop-shadow-[0_0_25px_rgba(0,0,0,0.4)]"
-          onError={() => setWatermarkSrc('/Pick_Your_Players.png')}
+          onError={() => setWatermarkSrc('/FL_Logo.png')}
         />
       </div>
 
