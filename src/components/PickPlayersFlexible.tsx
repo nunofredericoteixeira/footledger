@@ -387,11 +387,11 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
           className="max-w-5xl w-full h-auto object-contain"
         />
       </div>
-      <div className="absolute inset-0 flex items-center justify-center opacity-15 pointer-events-none">
+      <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
         <img
-          src="/Pick_Your_Players.png"
-          alt="Pick your players watermark"
-          className="max-w-3xl w-full h-auto object-contain"
+          src="/fl-dragon.png"
+          alt="FL Dragon watermark"
+          className="max-w-4xl w-full h-auto object-contain drop-shadow-[0_0_25px_rgba(0,0,0,0.4)]"
         />
       </div>
 
@@ -408,9 +408,9 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
 
           <div className="flex items-center gap-3">
             <img
-              src="/Pick_Your_Players.png"
-              alt="Pick your players"
-              className="w-14 h-14 object-contain drop-shadow-[0_0_10px_rgba(0,0,0,0.6)]"
+              src="/fl-dragon.png"
+              alt="FL Dragon"
+              className="w-16 h-16 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.7)]"
             />
           </div>
 
