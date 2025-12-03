@@ -55,6 +55,8 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
   const [initialBudget, setInitialBudget] = useState(teamValue);
   const [remainingBudget, setRemainingBudget] = useState(teamValue);
+  const [heroSrc, setHeroSrc] = useState('/fl-dragon.png');
+  const [watermarkSrc, setWatermarkSrc] = useState('/fl-dragon.png');
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -389,9 +391,10 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       </div>
       <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
         <img
-          src="/fl-dragon.png"
+          src={watermarkSrc}
           alt="FL Dragon watermark"
           className="max-w-4xl w-full h-auto object-contain drop-shadow-[0_0_25px_rgba(0,0,0,0.4)]"
+          onError={() => setWatermarkSrc('/Pick_Your_Players.png')}
         />
       </div>
 
@@ -408,9 +411,10 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
 
           <div className="flex items-center gap-3">
             <img
-              src="/fl-dragon.png"
+              src={heroSrc}
               alt="FL Dragon"
               className="w-16 h-16 object-contain drop-shadow-[0_0_12px_rgba(0,0,0,0.7)]"
+              onError={() => setHeroSrc('/FL_Logo.png')}
             />
           </div>
 
