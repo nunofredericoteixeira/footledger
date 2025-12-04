@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, ChevronLeft, Medal } from 'lucide-react';
+import { Trophy, TrendingUp, ChevronLeft, Medal, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/LanguageContext';
 import { getTranslation } from '../lib/translations';
@@ -15,6 +15,7 @@ interface PlayerStats {
   totalPoints: number;
   gamesPlayed: number;
   position: number;
+  positionLabel?: string;
 }
 
 function TopPlayers({ onBack }: TopPlayersProps) {
@@ -28,58 +29,48 @@ function TopPlayers({ onBack }: TopPlayersProps) {
 
   const loadTopPlayers = async () => {
     try {
-      const { data: performances } = await supabase
-        .from('player_performances')
-        .select(`
-          player_id,
-          points,
-          players:player_id (
-            name,
-            team
-          )
-        `);
+      // Aggregate performance points from player_performance_data
+      const { data: performances, error: perfError } = await supabase
+        .from('player_performance_data')
+        .select('player_name, performance_score');
+      if (perfError) throw perfError;
 
-      if (performances) {
-        const playerMap = new Map<string, { name: string; team: string; totalPoints: number; gamesPlayed: number }>();
+      const perfMap = new Map<string, { total: number; games: number }>();
+      performances?.forEach((row) => {
+        const name = row.player_name;
+        if (!name) return;
+        const score = row.performance_score || 0;
+        if (!perfMap.has(name)) {
+          perfMap.set(name, { total: 0, games: 0 });
+        }
+        const rec = perfMap.get(name)!;
+        rec.total += score;
+        rec.games += 1;
+      });
 
-        performances.forEach(perf => {
-          const playerId = perf.player_id;
-          const playerData = Array.isArray(perf.players) ? perf.players[0] : perf.players;
+      // Get player info (club/position) from player_pool
+      const { data: pool, error: poolError } = await supabase
+        .from('player_pool')
+        .select('id, name, club, position');
+      if (poolError) throw poolError;
 
-          if (!playerData) return;
+      const stats: PlayerStats[] = (pool || [])
+        .map((p) => {
+          const perf = perfMap.get(p.name) || { total: 0, games: 0 };
+          return {
+            playerId: p.id,
+            playerName: p.name,
+            playerTeam: p.club,
+            totalPoints: perf.total,
+            gamesPlayed: perf.games,
+            position: 0,
+            positionLabel: p.position,
+          };
+        })
+        .sort((a, b) => b.totalPoints - a.totalPoints);
 
-          if (!playerMap.has(playerId)) {
-            playerMap.set(playerId, {
-              name: playerData.name,
-              team: playerData.team,
-              totalPoints: 0,
-              gamesPlayed: 0
-            });
-          }
-
-          const player = playerMap.get(playerId)!;
-          player.totalPoints += perf.points || 0;
-          player.gamesPlayed += 1;
-        });
-
-        const playerStats: PlayerStats[] = Array.from(playerMap.entries())
-          .map(([playerId, data]) => ({
-            playerId,
-            playerName: data.name,
-            playerTeam: data.team,
-            totalPoints: data.totalPoints,
-            gamesPlayed: data.gamesPlayed,
-            position: 0
-          }))
-          .sort((a, b) => b.totalPoints - a.totalPoints)
-          .slice(0, 50)
-          .map((player, index) => ({
-            ...player,
-            position: index + 1
-          }));
-
-        setPlayers(playerStats);
-      }
+      const ranked = stats.map((p, idx) => ({ ...p, position: idx + 1 }));
+      setPlayers(ranked);
     } catch (error) {
       console.error('Error loading top players:', error);
     } finally {
@@ -187,6 +178,11 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                     <div className="flex items-baseline gap-3 mb-1">
                       <h3 className="text-2xl font-bold text-white">{player.playerName}</h3>
                       <span className="text-cyan-300">{player.playerTeam}</span>
+                      {player.positionLabel && (
+                        <span className="text-xs px-2 py-1 bg-cyan-500/20 border border-cyan-400/40 text-cyan-100 rounded-full">
+                          {player.positionLabel}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-4 text-sm">
