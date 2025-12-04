@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/LanguageContext';
 import { getTranslation } from '../lib/translations';
@@ -12,6 +12,8 @@ interface Player {
   position: string;
   value: number;
   total_points?: number;
+  weekly_points?: number;
+  isRoster?: boolean;
 }
 
 interface PickElevenProps {
@@ -40,6 +42,16 @@ const POSITION_SHORT_MAP: Record<string, string> = {
   'Right Winger': 'RW',
   'Centre-Forward': 'CF',
   'Striker': 'ST',
+};
+
+const isCompatible = (playerPos: string, fieldLabel: string) => {
+  const p = POSITION_SHORT_MAP[playerPos] || playerPos;
+  const f = fieldLabel;
+  if (p === f) return true;
+  if ((p === 'CF' && f === 'ST') || (p === 'ST' && f === 'CF')) return true;
+  if ((p === 'CM' && (f === 'LM' || f === 'RM')) || ((p === 'LM' || p === 'RM') && f === 'CM')) return true;
+  if ((p === 'LW' && f === 'LM') || (p === 'RW' && f === 'RM')) return true;
+  return false;
 };
 
 const FORMATION_LAYOUTS: Record<string, FieldPosition[]> = {
@@ -281,13 +293,13 @@ const FORMATION_LAYOUTS: Record<string, FieldPosition[]> = {
 
 export default function PickEleven({ userId, onComplete, onBack }: PickElevenProps) {
   const { language } = useLanguage();
-  const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
   const [tacticName, setTacticName] = useState<string>('1-4-3-3');
   const [availableTactics, setAvailableTactics] = useState<string[]>([]);
   const [fieldPositions, setFieldPositions] = useState<FieldPosition[]>([]);
   const [startingEleven, setStartingEleven] = useState<(Player | null)[]>([]);
   const [substitutes, setSubstitutes] = useState<(Player | null)[]>([null, null, null, null, null]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [draggedPlayer, setDraggedPlayer] = useState<Player | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<'available' | 'field' | 'subs' | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -299,6 +311,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   const [weekDates, setWeekDates] = useState({ start: '', end: '' });
   const [isSelectionOpen, setIsSelectionOpen] = useState(true);
   const [closingMessage, setClosingMessage] = useState('');
+  const [autoSelecting, setAutoSelecting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -352,6 +365,59 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
       setClosingMessage(`Opens in ${daysUntil}d ${hoursUntil}h ${minutesUntil}m`);
     }
+  };
+
+  const buildBestEleven = (source: Player[], useWeekly: boolean, preferRoster: boolean, onlyRoster: boolean) => {
+    const positions = FORMATION_LAYOUTS[tacticName] || FORMATION_LAYOUTS['1-4-3-3 Line'];
+    const usedIds = new Set<string>();
+    const bestXI: (Player | null)[] = positions.map(() => null);
+
+    positions.forEach((pos, idx) => {
+      const candidates = source
+        .filter(p => isCompatible(p.position, pos.label))
+        .filter(p => !usedIds.has(p.id))
+        .sort((a, b) => {
+          if (preferRoster) {
+            const rDiff = Number(b.isRoster ?? false) - Number(a.isRoster ?? false);
+            if (rDiff !== 0) return rDiff;
+          }
+          const scoreA = useWeekly ? (a.weekly_points || 0) : (a.total_points || 0);
+          const scoreB = useWeekly ? (b.weekly_points || 0) : (b.total_points || 0);
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          return a.name.localeCompare(b.name);
+        });
+
+      const pick = candidates.find(c => !onlyRoster || c.isRoster);
+      if (pick) {
+        bestXI[idx] = pick;
+        usedIds.add(pick.id);
+      }
+    });
+
+    // Subs: next best unused
+    const subs: (Player | null)[] = [];
+    const remaining = [...source]
+      .filter(p => !usedIds.has(p.id))
+      .sort((a, b) => {
+        if (preferRoster) {
+          const rDiff = Number(b.isRoster ?? false) - Number(a.isRoster ?? false);
+          if (rDiff !== 0) return rDiff;
+        }
+        const scoreA = useWeekly ? (a.weekly_points || 0) : (a.total_points || 0);
+        const scoreB = useWeekly ? (b.weekly_points || 0) : (b.total_points || 0);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return a.name.localeCompare(b.name);
+      });
+    for (const p of remaining) {
+      if (onlyRoster && !p.isRoster) continue;
+      subs.push(p);
+      if (subs.length >= 5) break;
+    }
+    while (subs.length < 5) subs.push(null);
+
+    setStartingEleven(bestXI);
+    setSubstitutes(subs);
+    setValidated(false);
   };
 
   const calculateWeekDates = () => {
@@ -430,35 +496,67 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         `)
         .eq('user_id', userId);
 
+      // All players for global best XI
+      const { data: poolAll, error: poolErr } = await supabase
+        .from('player_pool')
+        .select('id, name, league, club, position, value');
+      if (poolErr) throw poolErr;
+
+      // Points (total season) and weekly points
+      const { data: perf, error: perfError } = await supabase
+        .from('player_performance_data')
+        .select('player_name, performance_score');
+      if (perfError) throw perfError;
+
+      const { data: weeklyPoints, error: weeklyError } = await supabase
+        .from('player_weekly_points')
+        .select('player_id, points');
+      if (weeklyError) throw weeklyError;
+
+      const totalMap = (perf || []).reduce((acc, row) => {
+        if (!row.player_name) return acc;
+        acc[row.player_name] = (acc[row.player_name] || 0) + (row.performance_score || 0);
+        return acc;
+      }, {} as Record<string, number>);
+
+      const weeklyMap = (weeklyPoints || []).reduce((acc, row) => {
+        acc[row.player_id] = (acc[row.player_id] || 0) + (row.points || 0);
+        return acc;
+      }, {} as Record<string, number>);
+
+      let rosterWithPoints: Player[] = [];
+
       if (selections) {
-        const players = selections
+        const rosterPlayers = selections
           .map(s => s.player_pool)
           .filter((p): p is Player => p !== null);
 
-        const { data: pointsData, error: pointsError } = await supabase
-          .from('player_weekly_points')
-          .select('player_id, points');
+        rosterWithPoints = rosterPlayers.map(player => ({
+          ...player,
+          total_points: totalMap[player.name] || 0,
+          weekly_points: weeklyMap[player.id] || 0,
+          isRoster: true,
+        }));
 
-        if (!pointsError && pointsData) {
-          const playerTotalPoints = pointsData.reduce((acc, record) => {
-            if (!acc[record.player_id]) {
-              acc[record.player_id] = 0;
-            }
-            acc[record.player_id] += record.points;
-            return acc;
-          }, {} as Record<string, number>);
-
-          const playersWithPoints = players.map(player => ({
-            ...player,
-            total_points: playerTotalPoints[player.id] || 0
-          }));
-
-          setSelectedPlayers(playersWithPoints);
-          setAvailablePlayers(playersWithPoints);
-        } else {
-          setSelectedPlayers(players);
-          setAvailablePlayers(players);
-        }
+        setAvailablePlayers(rosterWithPoints);
+        const allEnriched = (poolAll || []).map(p => ({
+          ...p,
+          total_points: totalMap[p.name] || 0,
+          weekly_points: weeklyMap[p.id] || 0,
+          isRoster: rosterPlayers.some(r => r.id === p.id),
+        }));
+        setAllPlayers(allEnriched);
+      } else {
+        // No roster; still set all players with points
+        const allEnriched = (poolAll || []).map(p => ({
+          ...p,
+          total_points: totalMap[p.name] || 0,
+          weekly_points: weeklyMap[p.id] || 0,
+          isRoster: false,
+        }));
+        setAllPlayers(allEnriched);
+        setAvailablePlayers(allEnriched);
+        rosterWithPoints = allEnriched;
       }
 
       const today = new Date();
@@ -479,8 +577,15 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .maybeSingle();
 
       if (existingSelection) {
-        const startingElevenData = existingSelection.starting_eleven as Player[];
-        const substitutesData = existingSelection.substitutes as Player[];
+        const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
+          ...p,
+          total_points: totalMap[p.name] || p.total_points || 0,
+          weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+          isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
+        }));
+
+        const startingElevenData = enrich(existingSelection.starting_eleven as Player[]);
+        const substitutesData = enrich(existingSelection.substitutes as Player[]);
         const savedTactic = existingSelection.tactic_name || tacticToUse;
 
         if (savedTactic !== tacticToUse) {
@@ -497,9 +602,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...startingElevenData.map((p: Player) => p.id),
           ...substitutesData.map((p: Player) => p.id)
         ];
-        const available = selections
-          ?.map(s => s.player_pool)
-          .filter((p): p is Player => p !== null && !usedPlayerIds.includes(p.id)) || [];
+        const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
         setAvailablePlayers(available);
       }
     } catch (error) {
@@ -510,26 +613,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const isPlayerCompatibleWithPosition = (playerPosition: string, fieldPosition: string): boolean => {
-    const playerShort = POSITION_SHORT_MAP[playerPosition];
-
-    if (playerShort === fieldPosition) return true;
-
-    if ((playerShort === 'CF' && fieldPosition === 'ST') ||
-        (playerShort === 'ST' && fieldPosition === 'CF')) {
-      return true;
-    }
-
-    if ((playerShort === 'CF' && (fieldPosition === 'LW' || fieldPosition === 'RW')) ||
-        ((playerShort === 'LW' || playerShort === 'RW') && fieldPosition === 'CF')) {
-      return true;
-    }
-
-    if ((playerShort === 'CM' && (fieldPosition === 'LM' || fieldPosition === 'RM')) ||
-        ((playerShort === 'LM' || playerShort === 'RM') && fieldPosition === 'CM')) {
-      return true;
-    }
-
-    return false;
+    return isCompatible(playerPosition, fieldPosition);
   };
 
   const handleTacticChange = (newTactic: string) => {
@@ -920,6 +1004,32 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
           <p className="text-cyan-200">{validated ? 'Your locked eleven' : 'Drag and drop players onto the field'}</p>
 
+          {!validated && (
+            <div className="flex flex-wrap justify-center gap-3 mt-4">
+              <button
+                onClick={() => buildBestEleven(allPlayers.filter(p => p.isRoster), true, true, true)}
+                disabled={autoSelecting || allPlayers.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-yellow-400 to-orange-400 text-blue-900 font-bold rounded-lg shadow hover:brightness-110 disabled:opacity-50"
+              >
+                Melhor 11 semana passada
+              </button>
+              <button
+                onClick={() => buildBestEleven(allPlayers.filter(p => p.isRoster), false, true, true)}
+                disabled={autoSelecting || allPlayers.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-400 to-green-500 text-blue-900 font-bold rounded-lg shadow hover:brightness-110 disabled:opacity-50"
+              >
+                Melhor 11 de sempre (plantel)
+              </button>
+              <button
+                onClick={() => buildBestEleven(allPlayers, false, true, false)}
+                disabled={autoSelecting || allPlayers.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-cyan-400 to-blue-500 text-blue-900 font-bold rounded-lg shadow hover:brightness-110 disabled:opacity-50"
+              >
+                Melhor 11 de todos
+              </button>
+            </div>
+          )}
+
           {isElevenComplete && !validated && isSelectionOpen && (
             <div className="mt-4">
               <button
@@ -992,6 +1102,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                   >
                     <div className="text-[10px] font-bold text-white truncate">{startingEleven[index]!.name.split(' ').pop()}</div>
                     <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
+                    {startingEleven[index]!.total_points !== undefined && (
+                      <div className="text-[8px] text-white/90">
+                        {startingEleven[index]!.total_points!.toFixed(2)} pts
+                      </div>
+                    )}
+                    {startingEleven[index]!.weekly_points !== undefined && (
+                      <div className="text-[8px] text-yellow-200">
+                        Semana: {startingEleven[index]!.weekly_points!.toFixed(2)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div
@@ -1033,6 +1153,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                       >
                         <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name.split(' ').pop()}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
+                        {sub.total_points !== undefined && (
+                          <div className="text-[8px] text-gray-800 font-semibold">
+                            {sub.total_points.toFixed(2)} pts
+                          </div>
+                        )}
+                        {sub.weekly_points !== undefined && (
+                          <div className="text-[8px] text-yellow-900">
+                            Semana: {sub.weekly_points.toFixed(2)}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div
@@ -1079,11 +1209,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     <div className="flex justify-between items-start mb-0.5">
                       <div className="text-[9px] font-bold text-white truncate flex-1">{player.name}</div>
                       {player.total_points !== undefined && (
-                        <div className="text-[8px] text-yellow-300 font-bold ml-1 flex-shrink-0">{player.total_points} pts</div>
+                        <div className={`text-[8px] font-bold ml-1 flex-shrink-0 ${player.isRoster ? 'text-yellow-300' : 'text-white/80'}`}>
+                          {player.total_points.toFixed(2)} pts
+                        </div>
                       )}
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.weekly_points !== undefined && (
+                      <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1104,16 +1239,21 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                       validated || !isSelectionOpen ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
                     }`}
                   >
-                    <div className="flex justify-between items-start mb-0.5">
-                      <div className="text-[9px] font-bold text-white truncate flex-1">{player.name}</div>
-                      {player.total_points !== undefined && (
-                        <div className="text-[8px] text-yellow-300 font-bold ml-1 flex-shrink-0">{player.total_points} pts</div>
+                      <div className="flex justify-between items-start mb-0.5">
+                        <div className="text-[9px] font-bold text-white truncate flex-1">{player.name}</div>
+                        {player.total_points !== undefined && (
+                          <div className={`text-[8px] font-bold ml-1 flex-shrink-0 ${player.isRoster ? 'text-yellow-300' : 'text-white/80'}`}>
+                            {player.total_points.toFixed(2)} pts
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
+                      <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                      {player.weekly_points !== undefined && (
+                        <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
                       )}
                     </div>
-                    <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
-                    <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
 
@@ -1135,11 +1275,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     <div className="flex justify-between items-start mb-0.5">
                       <div className="text-[9px] font-bold text-white truncate flex-1">{player.name}</div>
                       {player.total_points !== undefined && (
-                        <div className="text-[8px] text-yellow-300 font-bold ml-1 flex-shrink-0">{player.total_points} pts</div>
+                        <div className={`text-[8px] font-bold ml-1 flex-shrink-0 ${player.isRoster ? 'text-yellow-300' : 'text-white/80'}`}>
+                          {player.total_points.toFixed(2)} pts
+                        </div>
                       )}
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.weekly_points !== undefined && (
+                      <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1163,11 +1308,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     <div className="flex justify-between items-start mb-0.5">
                       <div className="text-[9px] font-bold text-white truncate flex-1">{player.name}</div>
                       {player.total_points !== undefined && (
-                        <div className="text-[8px] text-yellow-300 font-bold ml-1 flex-shrink-0">{player.total_points} pts</div>
+                        <div className={`text-[8px] font-bold ml-1 flex-shrink-0 ${player.isRoster ? 'text-yellow-300' : 'text-white/80'}`}>
+                          {player.total_points.toFixed(2)} pts
+                        </div>
                       )}
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.weekly_points !== undefined && (
+                      <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
+                    )}
                   </div>
                 ))}
               </div>
