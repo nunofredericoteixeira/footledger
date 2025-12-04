@@ -26,6 +26,9 @@ interface Auction {
   winner_user_id: string | null;
   status: string;
   auction_players: AuctionPlayer;
+  // Optional preview stats
+  total_points?: number;
+  games_played?: number;
 }
 
 interface Bid {
@@ -157,6 +160,12 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         acc[key] = (acc[key] || 0) + (row.performance_score || 0);
         return acc;
       }, {} as Record<string, number>);
+      const gamesMap = (perf || []).reduce((acc, row) => {
+        if (!row.player_name) return acc;
+        const key = normalizeName(row.player_name);
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
 
       const leftBacks = pool.filter(p => (p.position || '').toLowerCase() === 'left-back');
       if (leftBacks.length === 0) return;
@@ -169,6 +178,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       });
       const best = leftBacks[0];
       const totalPoints = perfMap[normalizeName(best.name)] || 0;
+      const gamesPlayed = gamesMap[normalizeName(best.name)] || 0;
+      const avg = gamesPlayed > 0 ? totalPoints / gamesPlayed : 0;
 
       // próximo lunes às 12:00
       const now = new Date();
@@ -187,6 +198,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         current_bid: best.value * 0.2,
         winner_user_id: null,
         status: 'preview',
+        total_points: totalPoints,
+        games_played: gamesPlayed,
         auction_players: {
           id: best.id,
           name: best.name,
@@ -195,7 +208,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
           league: best.league,
           value: best.value,
           image_url: null,
-          description: `Total Points: ${totalPoints.toFixed(2)}`
+          description: `Total Points: ${totalPoints.toFixed(2)} • Avg: ${avg.toFixed(2)} pts/game`
         }
       };
       setFallbackAuction(fallback);
@@ -703,6 +716,12 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[fallbackAuction].map((auction) => {
                 const player = auction.auction_players;
+                const avg =
+                  auction.total_points && auction.games_played
+                    ? auction.games_played > 0
+                      ? auction.total_points / auction.games_played
+                      : 0
+                    : undefined;
                 return (
                   <div
                     key={auction.id}
@@ -713,7 +732,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     <p className="text-purple-300 text-sm mb-4">{player.league}</p>
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <p className="text-purple-300 text-sm">Starting Bid</p>
+                        <p className="text-purple-300 text-sm">Best Proposal</p>
                         <p className="text-white font-bold text-xl">
                           €{formatValue(auction.starting_bid)}
                         </p>
@@ -723,7 +742,14 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                         <p className="text-purple-400 font-bold">{getTimeRemaining(auction.end_date)}</p>
                       </div>
                     </div>
-                    <div className="text-purple-200 text-sm mb-4">{player.description}</div>
+                    <div className="text-purple-200 text-sm mb-4 space-y-1">
+                      <div>{player.description}</div>
+                      {avg !== undefined && (
+                        <div className="text-purple-300">
+                          Avg: {avg.toFixed(2)} pts/game
+                        </div>
+                      )}
+                    </div>
                     <button
                       disabled
                       className="w-full py-3 bg-gray-600 text-white font-bold rounded-lg cursor-not-allowed"
@@ -763,7 +789,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className="text-purple-300 text-sm">Current Bid</p>
+                      <p className="text-purple-300 text-sm">Best Proposal</p>
                       <p className="text-white font-bold text-xl">
                         €{formatValue(auction.current_bid || auction.starting_bid)}
                       </p>
