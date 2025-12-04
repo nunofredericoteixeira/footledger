@@ -447,6 +447,24 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
   const loadData = async () => {
     try {
+      const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
+        const pageSize = 1000;
+        let from = 0;
+        let all: T[] = [];
+        while (true) {
+          const { data, error } = await supabase
+            .from(table)
+            .select(columns)
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          const chunk = data || [];
+          all = all.concat(chunk);
+          if (chunk.length < pageSize) break;
+          from += pageSize;
+        }
+        return all;
+      };
+
       const { data: allTactics } = await supabase
         .from('tactics')
         .select('name')
@@ -497,21 +515,21 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .eq('user_id', userId);
 
       // All players for global best XI
-      const { data: poolAll, error: poolErr } = await supabase
-        .from('player_pool')
-        .select('id, name, league, club, position, value');
-      if (poolErr) throw poolErr;
+      const poolAll = await fetchAll<{ id: string; name: string; league: string; club: string; position: string; value: number }>(
+        'player_pool',
+        'id, name, league, club, position, value'
+      );
 
       // Points (total season) and weekly points
-      const { data: perf, error: perfError } = await supabase
-        .from('player_performance_data')
-        .select('player_name, performance_score');
-      if (perfError) throw perfError;
+      const perf = await fetchAll<{ player_name: string; performance_score: number }>(
+        'player_performance_data',
+        'player_name, performance_score'
+      );
 
-      const { data: weeklyPoints, error: weeklyError } = await supabase
-        .from('player_weekly_points')
-        .select('player_id, points');
-      if (weeklyError) throw weeklyError;
+      const weeklyPoints = await fetchAll<{ player_id: string; points: number }>(
+        'player_weekly_points',
+        'player_id, points'
+      );
 
       const totalByName = (perf || []).reduce((acc, row) => {
         if (!row.player_name) return acc;
