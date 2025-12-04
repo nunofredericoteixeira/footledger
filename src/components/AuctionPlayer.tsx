@@ -194,8 +194,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         auction_player_id: 'preview-left-back',
         start_date: now.toISOString(),
         end_date: nextMonday.toISOString(),
-        starting_bid: best.value * 0.2,
-        current_bid: best.value * 0.2,
+        starting_bid: 7,
+        current_bid: 7,
         winner_user_id: null,
         status: 'preview',
         total_points: totalPoints,
@@ -311,13 +311,20 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const handlePlaceBid = async () => {
     if (!selectedAuction) return;
 
+    const amount = Number(bidAmount);
+    if (!amount || amount <= 0) {
+      setError('Please enter a valid bid amount');
+      return;
+    }
+
+    const minBid = (selectedAuction.current_bid || selectedAuction.starting_bid || 0) + 1;
+    if (amount < minBid) {
+      setError(`Minimum bid is ${formatValue(minBid)} FL`);
+      return;
+    }
+
     // Preview mode: simulate bid without hitting DB
     if (selectedAuction.status === 'preview') {
-      const amount = Number(bidAmount);
-      if (!amount || amount <= 0) {
-        setError('Please enter a valid bid amount');
-        return;
-      }
       setSelectedAuction({ ...selectedAuction, current_bid: amount });
       setSuccess('Bid registered in preview (no blockchain/db write)');
       setBidAmount('');
@@ -330,23 +337,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       return;
     }
 
-    const amount = Number(bidAmount);
-    if (!amount || amount <= 0) {
-      setError('Please enter a valid bid amount');
-      return;
-    }
-
     if (amount > userBudget) {
       setError('Insufficient budget for this bid');
-      return;
-    }
-
-    const minBid = selectedAuction.current_bid > 0
-      ? selectedAuction.current_bid + 1000000
-      : selectedAuction.starting_bid;
-
-    if (amount < minBid) {
-      setError(`Minimum bid is €${formatValue(minBid)}`);
       return;
     }
 
@@ -388,12 +380,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   };
 
   const formatValue = (value: number) => {
-    if (value >= 1000000000) {
-      return `${(value / 1000000000).toFixed(2)}B`;
-    } else if (value >= 1000000) {
-      return `${(value / 1000000).toFixed(1)}M`;
-    }
-    return `${(value / 1000).toFixed(0)}K`;
+    return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
   };
 
   const getTimeRemaining = (endDate: string) => {
