@@ -268,8 +268,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
             {initialBudget > 0 && (
               <div className="bg-purple-500/20 backdrop-blur-md border border-purple-400/50 rounded-xl py-4 px-6">
                 <div className="text-purple-200 text-sm mb-1">Current Ratio</div>
-                <div className="text-3xl font-bold text-white">{currentRatio} M€{totalPoints > 0 ? ' / Point' : ''}</div>
-                {totalPoints > 0 && <div className="text-xs text-purple-300 mt-1">per Point</div>}
+                <div className="text-3xl font-bold text-white">{currentRatio}</div>
               </div>
             )}
             <div className="bg-cyan-500/20 backdrop-blur-md border border-cyan-400/50 rounded-xl py-4 px-6">
