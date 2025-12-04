@@ -380,19 +380,19 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     const bestXI: (Player | null)[] = positions.map(() => null);
 
     positions.forEach((pos, idx) => {
-      const candidates = source
-        .filter(p => isCompatible(p.position, pos.label))
-        .filter(p => !usedIds.has(p.id))
-        .sort((a, b) => {
-          if (preferRoster) {
-            const rDiff = Number(b.isRoster ?? false) - Number(a.isRoster ?? false);
-            if (rDiff !== 0) return rDiff;
-          }
-          const scoreA = useWeekly ? (a.weekly_points || 0) : (a.total_points || 0);
-          const scoreB = useWeekly ? (b.weekly_points || 0) : (b.total_points || 0);
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          return a.name.localeCompare(b.name);
-        });
+          const candidates = source
+            .filter(p => isCompatible(p.position, pos.label))
+            .filter(p => !usedIds.has(p.id))
+            .sort((a, b) => {
+              if (preferRoster) {
+                const rDiff = Number(b.isRoster ?? false) - Number(a.isRoster ?? false);
+                if (rDiff !== 0) return rDiff;
+              }
+              const scoreA = useWeekly ? (a.weekly_points || 0) : (a.total_points || 0);
+              const scoreB = useWeekly ? (b.weekly_points || 0) : (b.total_points || 0);
+              if (scoreB !== scoreA) return scoreB - scoreA;
+              return (a.name || '').localeCompare(b.name || '');
+            });
 
       const pick = candidates.find(c => !onlyRoster || c.isRoster);
       if (pick) {
@@ -1187,7 +1187,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                       validated || !isSelectionOpen ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-cyan-500/50'
                     }`}
                   >
-                    <div className="text-[10px] font-bold text-white truncate">{startingEleven[index]!.name.split(' ').pop()}</div>
+                    <div className="text-[10px] font-bold text-white truncate">
+                      {startingEleven[index]!.name || ''}
+                    </div>
                     <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
                     {startingEleven[index]!.total_points !== undefined && (
                       <div className="text-[8px] text-white/90">
@@ -1238,7 +1240,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                           validated || !isSelectionOpen ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
                         }`}
                       >
-                        <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name.split(' ').pop()}</div>
+                        <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name || ''}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
                         {sub.total_points !== undefined && (
                           <div className="text-[8px] text-gray-800 font-semibold">
