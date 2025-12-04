@@ -16,6 +16,7 @@ interface PlayerStats {
   gamesPlayed: number;
   position: number;
   positionLabel?: string;
+  league?: string;
 }
 
 function TopPlayers({ onBack }: TopPlayersProps) {
@@ -51,13 +52,13 @@ function TopPlayers({ onBack }: TopPlayersProps) {
       // Get player info (club/position) from player_pool
       const { data: pool, error: poolError } = await supabase
         .from('player_pool')
-        .select('id, name, club, position');
+        .select('id, name, club, position, league');
       if (poolError) throw poolError;
 
       // Build stats from performance map; enrich with club/position if found in pool
-      const poolMap = new Map<string, { id: string; club: string; position: string | null }>();
+      const poolMap = new Map<string, { id: string; club: string; position: string | null; league: string | null }>();
       (pool || []).forEach((p) => {
-        poolMap.set(p.name, { id: p.id, club: p.club, position: p.position });
+        poolMap.set(p.name, { id: p.id, club: p.club, position: p.position, league: p.league });
       });
 
       const stats: PlayerStats[] = Array.from(perfMap.entries()).map(([name, perf]) => {
@@ -70,6 +71,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           gamesPlayed: perf.games,
           position: 0,
           positionLabel: info?.position || undefined,
+          league: info?.league || undefined,
         };
       });
 
@@ -213,6 +215,14 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                           Avg: <span className="text-white font-bold">{(player.totalPoints / player.gamesPlayed).toFixed(1)}</span> pts/game
                         </span>
                       </div>
+                      {player.league && (
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-cyan-400" />
+                          <span className="text-cyan-200">
+                            Liga: <span className="text-white font-bold">{player.league}</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
