@@ -66,6 +66,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
   const [searchQuery, setSearchQuery] = useState('');
   const [positionGroups, setPositionGroups] = useState<Record<string, PositionGroup> | null>(null);
   const [hasTactic, setHasTactic] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     checkTacticSelection();
@@ -332,6 +333,34 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     }
   };
 
+  const handleUnlockSquad = async () => {
+    setUnlocking(true);
+    try {
+      const { error: delError } = await supabase
+        .from('user_player_selections')
+        .delete()
+        .eq('user_id', userId);
+      if (delError) throw delError;
+
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ players_locked: false })
+        .eq('id', userId);
+      if (updateError) throw updateError;
+
+      setSelectedPlayers([]);
+      setRemainingBudget(initialBudget);
+      setIsLocked(false);
+      setSuccess(false);
+      alert('Squad unlocked. You can select players again.');
+    } catch (err: any) {
+      console.error('Error unlocking squad:', err);
+      alert('Failed to unlock squad: ' + err.message);
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   const formatValue = (value: number) => {
     if (value >= 1000000000) {
       return `€${(value / 1000000000).toFixed(2)}B`;
@@ -514,6 +543,18 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
                 <div className="text-green-400 font-bold">Squad Locked</div>
                 <div className="text-cyan-200 text-sm">Your squad has been finalized</div>
               </div>
+            </div>
+          )}
+
+          {isLocked && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleUnlockSquad}
+                disabled={unlocking}
+                className="px-4 py-2 bg-red-500/20 border border-red-500/50 text-red-300 rounded-lg hover:bg-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {unlocking ? 'Unlocking...' : 'Unlock squad (admin/test)'}
+              </button>
             </div>
           )}
         </div>
