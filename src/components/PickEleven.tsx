@@ -610,6 +610,44 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         ];
         const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
         setAvailablePlayers(available);
+      } else {
+        // No selection for this week; try to prefill with the most recent saved eleven
+        const { data: lastSelection } = await supabase
+          .from('weekly_eleven_selections')
+          .select('*')
+          .eq('user_id', userId)
+          .order('week_start_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastSelection) {
+          const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
+            ...p,
+            total_points: totalById[p.id] ?? totalByName[p.name] ?? p.total_points ?? 0,
+            weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+            isRoster: rosterWithPoints.some(r => r.id === p.id),
+          }));
+
+          const startingElevenData = enrich(lastSelection.starting_eleven as Player[]);
+          const substitutesData = enrich(lastSelection.substitutes as Player[]);
+          const savedTactic = lastSelection.tactic_name || tacticToUse;
+
+          if (savedTactic !== tacticToUse) {
+            setTacticName(savedTactic);
+            const savedPositions = FORMATION_LAYOUTS[savedTactic] || FORMATION_LAYOUTS['1-4-3-3 Line'];
+            setFieldPositions(savedPositions);
+          }
+
+          setStartingEleven(startingElevenData);
+          setSubstitutes(substitutesData);
+
+          const usedPlayerIds = [
+            ...startingElevenData.map((p: Player) => p.id),
+            ...substitutesData.map((p: Player) => p.id)
+          ];
+          const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
+          setAvailablePlayers(available);
+        }
       }
     } catch (error) {
       console.error('Error loading data:', error);
