@@ -612,13 +612,15 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         setAvailablePlayers(available);
       } else {
         // No selection for this week; try to prefill with the most recent saved eleven
-        const { data: lastSelection } = await supabase
+        const { data: lastSelections, error: lastError } = await supabase
           .from('weekly_eleven_selections')
           .select('*')
           .eq('user_id', userId)
           .order('week_start_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        if (lastError) throw lastError;
+
+        const lastSelection = lastSelections?.[0];
 
         if (lastSelection) {
           const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
