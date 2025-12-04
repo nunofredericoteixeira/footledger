@@ -565,6 +565,19 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         rosterWithPoints = allEnriched;
       }
 
+      // Safety fallback: if rosterWithPoints ended up empty (e.g., admin/seed missing roster rows),
+      // allow selection from the full pool so the user can still build an eleven.
+      if (rosterWithPoints.length === 0 && poolAll) {
+        const allEnriched = (poolAll || []).map(p => ({
+          ...p,
+          total_points: totalById[p.id] ?? totalByName[p.name] ?? 0,
+          weekly_points: weeklyMap[p.id] || 0,
+          isRoster: false,
+        }));
+        setAllPlayers(allEnriched);
+        setAvailablePlayers(allEnriched);
+      }
+
       const today = new Date();
       const dayOfWeek = today.getDay();
       let daysToTuesday = dayOfWeek === 0 ? -5 : dayOfWeek === 1 ? -6 : 2 - dayOfWeek;
