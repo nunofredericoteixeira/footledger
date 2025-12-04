@@ -54,6 +54,13 @@ const isCompatible = (playerPos: string, fieldLabel: string) => {
   return false;
 };
 
+const normalizeName = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
 const FORMATION_LAYOUTS: Record<string, FieldPosition[]> = {
   '1-4-3-3 Line': [
     { x: 50, y: 85, label: 'GK' },
@@ -533,7 +540,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
       const totalByName = (perf || []).reduce((acc, row) => {
         if (!row.player_name) return acc;
-        const key = row.player_name.toLowerCase();
+        const key = normalizeName(row.player_name);
         acc[key] = (acc[key] || 0) + (row.performance_score || 0);
         return acc;
       }, {} as Record<string, number>);
@@ -552,7 +559,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
         rosterWithPoints = rosterPlayers.map(player => ({
           ...player,
-          total_points: totalByName[player.name.toLowerCase()] ?? 0,
+          total_points: totalByName[normalizeName(player.name)] ?? 0,
           weekly_points: weeklyMap[player.id] || 0,
           isRoster: true,
         }));
@@ -560,7 +567,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         setAvailablePlayers(rosterWithPoints);
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
-          total_points: totalByName[p.name.toLowerCase()] ?? 0,
+          total_points: totalByName[normalizeName(p.name)] ?? 0,
           weekly_points: weeklyMap[p.id] || 0,
           isRoster: rosterPlayers.some(r => r.id === p.id),
         }));
@@ -569,7 +576,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         // No roster; still set all players with points
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
-          total_points: totalByName[p.name.toLowerCase()] ?? 0,
+          total_points: totalByName[normalizeName(p.name)] ?? 0,
           weekly_points: weeklyMap[p.id] || 0,
           isRoster: false,
         }));
@@ -611,7 +618,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       if (existingSelection) {
         const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
           ...p,
-          total_points: totalByName[p.name.toLowerCase()] ?? p.total_points ?? 0,
+          total_points: totalByName[normalizeName(p.name)] ?? p.total_points ?? 0,
           weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
           isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
         }));
