@@ -103,6 +103,14 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         return acc;
       }, {} as Record<string, number>);
 
+      const getTotalPoints = (name: string) => {
+        const key = normalizeName(name);
+        if (key in totalByName) return totalByName[key];
+        // Fallback: match inclusivo (para abreviados ou nomes alternativos)
+        const fallback = Object.entries(totalByName).find(([stored]) => stored.includes(key) || key.includes(stored));
+        return fallback ? fallback[1] : 0;
+      };
+
       // Weekly points (sum of all rows per player_id)
       const weeklyRows = await fetchAll<{ player_id: string; points: number }>(
         'player_weekly_points',
@@ -115,7 +123,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
       if (playersData) {
         const playersWithPoints: PlayerWithPoints[] = playersData.map(player => {
-          const totalPoints = totalByName[normalizeName(player.name)] || 0;
+          const totalPoints = getTotalPoints(player.name);
           const lastWeek = weeklyMap[player.id] || 0;
           return {
             ...player,
@@ -255,11 +263,11 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
             )}
             <div className="bg-cyan-500/20 backdrop-blur-md border border-cyan-400/50 rounded-xl py-4 px-6">
               <div className="text-cyan-200 text-sm mb-1">{getTranslation('screens.totalPoints', language)}</div>
-              <div className="text-3xl font-bold text-white">{totalPoints}</div>
+              <div className="text-3xl font-bold text-white">{totalPoints.toFixed(1)}</div>
             </div>
             <div className="bg-green-500/20 backdrop-blur-md border border-green-400/50 rounded-xl py-4 px-6">
               <div className="text-green-200 text-sm mb-1">{getTranslation('screens.weeklyPoints', language)}</div>
-              <div className="text-3xl font-bold text-white">{lastWeekTotal}</div>
+              <div className="text-3xl font-bold text-white">{lastWeekTotal.toFixed(1)}</div>
             </div>
           </div>
         </div>
@@ -328,7 +336,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                       <div className="text-xs text-cyan-300">{player.league}</div>
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <div className="text-2xl font-bold text-white">{player.total_points}</div>
+                      <div className="text-2xl font-bold text-white">{player.total_points.toFixed(1)}</div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-center gap-2">
@@ -338,7 +346,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                           player.last_week_points < 0 ? 'text-red-400' :
                           'text-gray-400'
                         }`}>
-                          {player.last_week_points > 0 ? '+' : ''}{player.last_week_points}
+                          {player.last_week_points > 0 ? '+' : ''}{player.last_week_points.toFixed(1)}
                         </span>
                       </div>
                     </td>
