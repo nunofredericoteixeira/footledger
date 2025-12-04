@@ -25,9 +25,16 @@ function TopPlayers({ onBack }: TopPlayersProps) {
   const [loading, setLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<string>('All');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   useEffect(() => {
     loadTopPlayers();
+  }, []);
+
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 300);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   const loadTopPlayers = async () => {
@@ -248,7 +255,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                       <div className="flex items-center gap-2">
                         <Trophy className="w-4 h-4 text-yellow-400" />
                         <span className="text-cyan-200">
-                          Total Points: <span className="text-white font-bold">{player.totalPoints}</span>
+                          Total Points: <span className="text-white font-bold">{player.totalPoints.toFixed(2)}</span>
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -259,7 +266,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-cyan-200">
-                          Avg: <span className="text-white font-bold">{(player.totalPoints / player.gamesPlayed).toFixed(1)}</span> pts/game
+                          Avg: <span className="text-white font-bold">{(player.totalPoints / Math.max(player.gamesPlayed, 1)).toFixed(2)}</span> pts/game
                         </span>
                       </div>
                       {player.league && (
@@ -278,6 +285,15 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           </div>
         )}
       </div>
+
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed bottom-6 right-6 bg-cyan-500 hover:bg-cyan-400 text-blue-900 font-bold px-4 py-3 rounded-full shadow-xl border border-cyan-300 transition-colors"
+        >
+          Topo
+        </button>
+      )}
     </div>
   );
 }
