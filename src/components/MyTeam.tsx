@@ -31,6 +31,17 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const [sortBy, setSortBy] = useState<'total' | 'weekly' | 'position'>('position');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [initialBudget, setInitialBudget] = useState(0);
+  const formatRatio = (points: number, budget: number) => {
+    if (points <= 0) return `${(budget / 1000000).toFixed(2)} M€`;
+    const raw = (budget / points); // euros per point
+    if (raw >= 1000000) {
+      return `${(raw / 1000000).toFixed(2)} M€ / Point`;
+    }
+    if (raw >= 1000) {
+      return `${(raw / 1000).toFixed(2)} K€ / Point`;
+    }
+    return `${raw.toFixed(0)} € / Point`;
+  };
 
   useEffect(() => {
     loadPlayerPoints();
@@ -189,7 +200,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
   const totalPoints = players.reduce((sum, p) => sum + p.total_points, 0);
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
-  const currentRatio = totalPoints > 0 ? (initialBudget / 1000000 / totalPoints).toFixed(2) : (initialBudget / 1000000).toFixed(2);
+  const currentRatio = formatRatio(totalPoints, initialBudget);
 
   const getPointsIcon = (points: number) => {
     if (points > 0) return <TrendingUp className="w-4 h-4 text-green-400" />;
