@@ -38,6 +38,31 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
   const loadPlayerPoints = async () => {
     try {
+      const normalizeName = (name: string) =>
+        (name || '')
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim();
+
+      const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
+        const pageSize = 1000;
+        let from = 0;
+        let all: T[] = [];
+        while (true) {
+          const { data, error } = await supabase
+            .from(table)
+            .select(columns)
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          const chunk = data || [];
+          all = all.concat(chunk);
+          if (chunk.length < pageSize) break;
+          from += pageSize;
+        }
+        return all;
+      };
+
       const { data: userProfile } = await supabase
         .from('user_profiles')
         .select('team_value, selected_team_id')
@@ -65,19 +90,37 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         .select('*')
         .in('id', playerIds);
 
-      const { data: pointsData } = await supabase
-        .from('user_player_total_points')
-        .select('player_id, total_points, last_week_points')
-        .eq('user_id', userId)
-        .in('player_id', playerIds);
+      // Aggregate total points by player name (case/diacritics insensitive)
+      const perf = await fetchAll<{ player_name: string; performance_score: number }>(
+        'player_performance_data',
+        'player_name, performance_score'
+      );
+
+      const totalByName = (perf || []).reduce((acc, row) => {
+        if (!row.player_name) return acc;
+        const key = normalizeName(row.player_name);
+        acc[key] = (acc[key] || 0) + (row.performance_score || 0);
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Weekly points (sum of all rows per player_id)
+      const weeklyRows = await fetchAll<{ player_id: string; points: number }>(
+        'player_weekly_points',
+        'player_id, points'
+      );
+      const weeklyMap = (weeklyRows || []).reduce((acc, row) => {
+        acc[row.player_id] = (acc[row.player_id] || 0) + (row.points || 0);
+        return acc;
+      }, {} as Record<string, number>);
 
       if (playersData) {
         const playersWithPoints: PlayerWithPoints[] = playersData.map(player => {
-          const points = pointsData?.find(p => p.player_id === player.id);
+          const totalPoints = totalByName[normalizeName(player.name)] || 0;
+          const lastWeek = weeklyMap[player.id] || 0;
           return {
             ...player,
-            total_points: points?.total_points || 0,
-            last_week_points: points?.last_week_points || 0
+            total_points: totalPoints,
+            last_week_points: lastWeek
           };
         });
 
