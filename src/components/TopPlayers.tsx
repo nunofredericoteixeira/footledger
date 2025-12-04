@@ -23,6 +23,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
   const { language } = useLanguage();
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPosition, setSelectedPosition] = useState<string>('All');
 
   useEffect(() => {
     loadTopPlayers();
@@ -55,23 +56,18 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         .select('id, name, club, position, league');
       if (poolError) throw poolError;
 
-      // Build stats from performance map; enrich with club/position if found in pool
-      const poolMap = new Map<string, { id: string; club: string; position: string | null; league: string | null }>();
-      (pool || []).forEach((p) => {
-        poolMap.set(p.name, { id: p.id, club: p.club, position: p.position, league: p.league });
-      });
-
-      const stats: PlayerStats[] = Array.from(perfMap.entries()).map(([name, perf]) => {
-        const info = poolMap.get(name);
+      // Build stats from the pool (3022 jogadores), mesmo que tenham 0 pontos.
+      const stats: PlayerStats[] = (pool || []).map((p) => {
+        const perf = perfMap.get(p.name) || { total: 0, games: 0 };
         return {
-          playerId: info?.id || name,
-          playerName: name,
-          playerTeam: info?.club || '—',
+          playerId: p.id,
+          playerName: p.name,
+          playerTeam: p.club,
           totalPoints: perf.total,
           gamesPlayed: perf.games,
           position: 0,
-          positionLabel: info?.position || undefined,
-          league: info?.league || undefined,
+          positionLabel: p.position || undefined,
+          league: p.league || undefined,
         };
       });
 
@@ -163,6 +159,29 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           <p className="text-cyan-200 text-lg">Best performing players by total points</p>
         </div>
 
+        {/* Filtros por posição */}
+        <div className="flex flex-wrap gap-2 justify-center mb-6">
+          {['All', ...Array.from(new Set(players.map(p => p.positionLabel || 'Sem posição')))].map((pos) => (
+            <button
+              key={pos}
+              onClick={() => setSelectedPosition(pos)}
+              className={`px-3 py-2 rounded-full text-sm font-semibold border transition-colors ${
+                selectedPosition === pos
+                  ? 'bg-cyan-500 text-blue-900 border-cyan-300'
+                  : 'bg-black/30 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/20'
+              }`}
+            >
+              {pos}
+            </button>
+          ))}
+        </div>
+
+        {players.length > 0 && (
+          <div className="text-right text-cyan-200 text-sm mb-2">
+            Total: <span className="font-bold text-white">{players.length}</span> jogadores
+          </div>
+        )}
+
         {players.length === 0 ? (
           <div className="bg-black/40 backdrop-blur-md border border-cyan-400/30 rounded-xl p-12 text-center">
             <TrendingUp className="w-16 h-16 text-cyan-400 mx-auto mb-4 opacity-50" />
@@ -171,7 +190,9 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            {players.map((player) => (
+            {players
+              .filter((p) => selectedPosition === 'All' || (p.positionLabel || 'Sem posição') === selectedPosition)
+              .map((player) => (
               <div
                 key={player.playerId}
                 className={`
