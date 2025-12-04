@@ -54,25 +54,30 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         .select('id, name, club, position');
       if (poolError) throw poolError;
 
-      // Sort primarily by total points (desc), then name (asc). Drop players with zero points to avoid long zero-list.
-      const stats: PlayerStats[] = (pool || [])
-        .map((p) => {
-          const perf = perfMap.get(p.name) || { total: 0, games: 0 };
-          return {
-            playerId: p.id,
-            playerName: p.name,
-            playerTeam: p.club,
-            totalPoints: perf.total,
-            gamesPlayed: perf.games,
-            position: 0,
-            positionLabel: p.position,
-          };
-        })
-        .filter((p) => p.totalPoints !== 0)
-        .sort((a, b) => {
-          if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-          return a.playerName.localeCompare(b.playerName);
-        });
+      // Build stats from performance map; enrich with club/position if found in pool
+      const poolMap = new Map<string, { id: string; club: string; position: string | null }>();
+      (pool || []).forEach((p) => {
+        poolMap.set(p.name, { id: p.id, club: p.club, position: p.position });
+      });
+
+      const stats: PlayerStats[] = Array.from(perfMap.entries()).map(([name, perf]) => {
+        const info = poolMap.get(name);
+        return {
+          playerId: info?.id || name,
+          playerName: name,
+          playerTeam: info?.club || '—',
+          totalPoints: perf.total,
+          gamesPlayed: perf.games,
+          position: 0,
+          positionLabel: info?.position || undefined,
+        };
+      });
+
+      // Sort primarily by total points (desc), then name (asc).
+      stats.sort((a, b) => {
+        if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+        return a.playerName.localeCompare(b.playerName);
+      });
 
       const ranked = stats.map((p, idx) => ({ ...p, position: idx + 1 }));
       setPlayers(ranked);
