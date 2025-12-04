@@ -40,9 +40,17 @@ interface AuctionPlayerProps {
   onBack: () => void;
 }
 
+const normalizeName = (name: string) =>
+  (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
 export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const { language } = useLanguage();
   const [auctions, setAuctions] = useState<Auction[]>([]);
+   const [fallbackAuction, setFallbackAuction] = useState<Auction | null>(null);
   const [selectedAuction, setSelectedAuction] = useState<Auction | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const [bidAmount, setBidAmount] = useState('');
@@ -115,6 +123,87 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
     }
   };
 
+  const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
+    const pageSize = 1000;
+    let from = 0;
+    let all: T[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(columns)
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const chunk = data || [];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  };
+
+  const buildFallbackLeftBack = async () => {
+    try {
+      const pool = await fetchAll<{ id: string; name: string; position: string; club: string; league: string; value: number }>(
+        'player_pool',
+        'id, name, position, club, league, value'
+      );
+      const perf = await fetchAll<{ player_name: string; performance_score: number }>(
+        'player_performance_data',
+        'player_name, performance_score'
+      );
+      const perfMap = (perf || []).reduce((acc, row) => {
+        if (!row.player_name) return acc;
+        const key = normalizeName(row.player_name);
+        acc[key] = (acc[key] || 0) + (row.performance_score || 0);
+        return acc;
+      }, {} as Record<string, number>);
+
+      const leftBacks = pool.filter(p => (p.position || '').toLowerCase() === 'left-back');
+      if (leftBacks.length === 0) return;
+
+      leftBacks.sort((a, b) => {
+        const ta = perfMap[normalizeName(a.name)] || 0;
+        const tb = perfMap[normalizeName(b.name)] || 0;
+        if (tb !== ta) return tb - ta;
+        return a.name.localeCompare(b.name);
+      });
+      const best = leftBacks[0];
+      const totalPoints = perfMap[normalizeName(best.name)] || 0;
+
+      // próximo lunes às 12:00
+      const now = new Date();
+      const day = now.getDay(); // 0 domingo
+      const daysToMonday = day === 0 ? 1 : 8 - day;
+      const nextMonday = new Date(now);
+      nextMonday.setDate(now.getDate() + daysToMonday);
+      nextMonday.setHours(12, 0, 0, 0);
+
+      const fallback: Auction = {
+        id: 'preview-left-back',
+        auction_player_id: 'preview-left-back',
+        start_date: now.toISOString(),
+        end_date: nextMonday.toISOString(),
+        starting_bid: best.value * 0.2,
+        current_bid: best.value * 0.2,
+        winner_user_id: null,
+        status: 'preview',
+        auction_players: {
+          id: best.id,
+          name: best.name,
+          position: best.position,
+          club: best.club,
+          league: best.league,
+          value: best.value,
+          image_url: null,
+          description: `Total Points: ${totalPoints.toFixed(2)}`
+        }
+      };
+      setFallbackAuction(fallback);
+    } catch (err) {
+      console.error('Error building fallback auction', err);
+    }
+  };
+
   const loadAuctions = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -125,8 +214,14 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
     if (error) {
       console.error('Error loading auctions:', error);
+      setAuctions([]);
+      setFallbackAuction(null);
+    } else if (data && data.length > 0) {
+      setAuctions(data);
+      setFallbackAuction(null);
     } else {
-      setAuctions(data || []);
+      setAuctions([]);
+      await buildFallbackLeftBack();
     }
     setLoading(false);
   };
@@ -201,7 +296,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   };
 
   const handlePlaceBid = async () => {
-    if (!selectedAuction) return;
+    if (!selectedAuction || selectedAuction.status !== 'active') return;
 
     if (!nftVerified) {
       setError('You must verify your Dragon NFT and Footledgers tokens to place bids');
@@ -604,11 +699,48 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-400"></div>
           </div>
         ) : auctions.length === 0 ? (
-          <div className="bg-black/60 backdrop-blur-md rounded-2xl p-12 border border-purple-400/30 text-center">
-            <Trophy className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-white mb-2">No Active Auctions</h2>
-            <p className="text-purple-200">Check back soon for new player auctions!</p>
-          </div>
+          fallbackAuction ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[fallbackAuction].map((auction) => {
+                const player = auction.auction_players;
+                return (
+                  <div
+                    key={auction.id}
+                    className="bg-black/60 backdrop-blur-md rounded-2xl p-6 border border-purple-400/30 hover:border-purple-400 transition-all"
+                  >
+                    <h3 className="text-2xl font-bold text-white mb-1">{player.name}</h3>
+                    <p className="text-purple-200 mb-2">{player.position} • {player.club}</p>
+                    <p className="text-purple-300 text-sm mb-4">{player.league}</p>
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="text-purple-300 text-sm">Starting Bid</p>
+                        <p className="text-white font-bold text-xl">
+                          €{formatValue(auction.starting_bid)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-purple-300 text-sm">Countdown</p>
+                        <p className="text-purple-400 font-bold">{getTimeRemaining(auction.end_date)}</p>
+                      </div>
+                    </div>
+                    <div className="text-purple-200 text-sm mb-4">{player.description}</div>
+                    <button
+                      disabled
+                      className="w-full py-3 bg-gray-600 text-white font-bold rounded-lg cursor-not-allowed"
+                    >
+                      Preview
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-black/60 backdrop-blur-md rounded-2xl p-12 border border-purple-400/30 text-center">
+              <Trophy className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">No Active Auctions</h2>
+              <p className="text-purple-200">Check back soon for new player auctions!</p>
+            </div>
+          )
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {auctions.map((auction) => {
