@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Trash2, Users, AlertTriangle, TestTube, Upload } from 'lucide-react';
+import { Shield, Trash2, Users, AlertTriangle, TestTube, Upload, CalendarRange, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import DataSyncPanel from './DataSyncPanel';
 
@@ -23,6 +23,9 @@ export default function AdminPanel({ onNavigateToDashboard }: AdminPanelProps = 
   const [isAdmin, setIsAdmin] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [populatingPlayers, setPopulatingPlayers] = useState(false);
+  const [weekDate, setWeekDate] = useState<string>('');
+  const [settingWeek, setSettingWeek] = useState(false);
+  const [weekMessage, setWeekMessage] = useState<string | null>(null);
 
   useEffect(() => {
     checkAdminStatus();
@@ -246,6 +249,58 @@ export default function AdminPanel({ onNavigateToDashboard }: AdminPanelProps = 
     }
   };
 
+  const handleSetWeekDates = async () => {
+    setWeekMessage(null);
+    setSettingWeek(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setWeekMessage('Not authenticated');
+        return;
+      }
+
+      const { data: selections, error: selError } = await supabase
+        .from('weekly_eleven_selections')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (selError) throw selError;
+      const selectionId = selections?.[0]?.id;
+      if (!selectionId) {
+        setWeekMessage('No weekly eleven selection found to update.');
+        return;
+      }
+
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/set-weekly-dates`;
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selectionId,
+          referenceDate: weekDate || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to set week dates');
+      }
+
+      setWeekMessage(`Updated week: ${data.weekStart} → ${data.weekEnd}`);
+    } catch (error: any) {
+      console.error('Error setting week dates:', error);
+      setWeekMessage(error.message || 'Error setting week dates');
+    } finally {
+      setSettingWeek(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -277,6 +332,51 @@ export default function AdminPanel({ onNavigateToDashboard }: AdminPanelProps = 
       </div>
 
       <DataSyncPanel />
+
+      <div className="bg-blue-800/50 rounded-xl border border-cyan-500/30 p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 p-3 rounded-xl">
+            <CalendarRange className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">Set Weekly Dates (Admin)</h3>
+            <p className="text-cyan-200 text-sm">
+              Escolhe a data de referência; a semana é calculada automaticamente (terça a segunda).
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-cyan-200 mb-2">Data de referência</label>
+            <input
+              type="date"
+              value={weekDate}
+              onChange={(e) => setWeekDate(e.target.value)}
+              className="w-full bg-blue-900/60 border border-cyan-500/40 text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+            />
+            <p className="text-xs text-cyan-300 mt-1">
+              Se deixar vazio, usa a data de hoje.
+            </p>
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={handleSetWeekDates}
+              disabled={settingWeek}
+              className="w-full py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-green-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {settingWeek && <Loader2 className="w-5 h-5 animate-spin" />}
+              Definir semana
+            </button>
+          </div>
+        </div>
+
+        {weekMessage && (
+          <div className="text-sm text-cyan-100 bg-cyan-500/10 border border-cyan-500/40 rounded-lg px-3 py-2">
+            {weekMessage}
+          </div>
+        )}
+      </div>
 
       <div className="bg-blue-800/50 rounded-xl border border-cyan-500/30 overflow-hidden">
         <div className="overflow-x-auto">
