@@ -24,6 +24,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
   const [players, setPlayers] = useState<PlayerStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPosition, setSelectedPosition] = useState<string>('All');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     loadTopPlayers();
@@ -31,11 +32,29 @@ function TopPlayers({ onBack }: TopPlayersProps) {
 
   const loadTopPlayers = async () => {
     try {
-      // Aggregate performance points from player_performance_data
-      const { data: performances, error: perfError } = await supabase
-        .from('player_performance_data')
-        .select('player_name, performance_score');
-      if (perfError) throw perfError;
+      // Helper: fetch all rows in pages
+      const fetchAll = async <T,>(table: string, columns: string, pageSize = 1000): Promise<T[]> => {
+        let from = 0;
+        let all: T[] = [];
+        while (true) {
+          const { data, error } = await supabase
+            .from(table)
+            .select(columns)
+            .range(from, from + pageSize - 1);
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          all = all.concat(data as T[]);
+          if (data.length < pageSize) break;
+          from += pageSize;
+        }
+        return all;
+      };
+
+      // Aggregate performance points from player_performance_data (all rows)
+      const performances = await fetchAll<{ player_name: string; performance_score: number }>(
+        'player_performance_data',
+        'player_name, performance_score'
+      );
 
       const perfMap = new Map<string, { total: number; games: number }>();
       performances?.forEach((row) => {
@@ -50,11 +69,11 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         rec.games += 1;
       });
 
-      // Get player info (club/position) from player_pool
-      const { data: pool, error: poolError } = await supabase
-        .from('player_pool')
-        .select('id, name, club, position, league');
-      if (poolError) throw poolError;
+      // Get player info (club/position/league) from player_pool (all rows)
+      const pool = await fetchAll<{ id: string; name: string; club: string; position: string | null; league: string | null }>(
+        'player_pool',
+        'id, name, club, position, league'
+      );
 
       // Build stats from the pool (3022 jogadores), mesmo que tenham 0 pontos.
       const stats: PlayerStats[] = (pool || []).map((p) => {
@@ -81,6 +100,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
       setPlayers(ranked);
     } catch (error) {
       console.error('Error loading top players:', error);
+      setErrorMsg((error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -158,6 +178,12 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           <h1 className="text-5xl font-bold text-white mb-3">{getTranslation('screens.topPlayers', language)}</h1>
           <p className="text-cyan-200 text-lg">Best performing players by total points</p>
         </div>
+
+        {errorMsg && (
+          <div className="mb-4 text-center text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded-lg px-4 py-2">
+            {errorMsg}
+          </div>
+        )}
 
         {/* Filtros por posição */}
         <div className="flex flex-wrap gap-2 justify-center mb-6">
