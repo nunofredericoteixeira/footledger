@@ -208,7 +208,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
           league: best.league,
           value: best.value,
           image_url: null,
-          description: `Total Points: ${totalPoints.toFixed(2)} • Avg: ${avg.toFixed(2)} pts/game`
+          description: `Total Points: ${totalPoints.toFixed(2)}`
         }
       };
       setFallbackAuction(fallback);
@@ -734,7 +734,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                       <div>
                         <p className="text-purple-300 text-sm">Best Proposal</p>
                         <p className="text-white font-bold text-xl">
-                          €{formatValue(auction.starting_bid)}
+                          {formatValue(auction.starting_bid)} FL
                         </p>
                       </div>
                       <div className="text-right">
@@ -754,7 +754,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                       disabled
                       className="w-full py-3 bg-gray-600 text-white font-bold rounded-lg cursor-not-allowed"
                     >
-                      Preview
+                      Licitar
                     </button>
                   </div>
                 );
@@ -791,7 +791,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     <div>
                       <p className="text-purple-300 text-sm">Best Proposal</p>
                       <p className="text-white font-bold text-xl">
-                        €{formatValue(auction.current_bid || auction.starting_bid)}
+                        {formatValue(auction.current_bid || auction.starting_bid)} FL
                       </p>
                     </div>
                     <div className="text-right">
