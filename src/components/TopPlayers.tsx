@@ -54,6 +54,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         .select('id, name, club, position');
       if (poolError) throw poolError;
 
+      // Sort primarily by total points (desc), then name (asc). Drop players with zero points to avoid long zero-list.
       const stats: PlayerStats[] = (pool || [])
         .map((p) => {
           const perf = perfMap.get(p.name) || { total: 0, games: 0 };
@@ -67,7 +68,11 @@ function TopPlayers({ onBack }: TopPlayersProps) {
             positionLabel: p.position,
           };
         })
-        .sort((a, b) => b.totalPoints - a.totalPoints);
+        .filter((p) => p.totalPoints !== 0)
+        .sort((a, b) => {
+          if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+          return a.playerName.localeCompare(b.playerName);
+        });
 
       const ranked = stats.map((p, idx) => ({ ...p, position: idx + 1 }));
       setPlayers(ranked);
