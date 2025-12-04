@@ -296,6 +296,26 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     }
 
     try {
+      // Persist the current selection before locking.
+      const selectionRows = selectedPlayers.map((p) => ({
+        user_id: userId,
+        player_id: p.id,
+      }));
+
+      // Clear previous selections to avoid duplicates/uniques
+      const { error: delError } = await supabase
+        .from('user_player_selections')
+        .delete()
+        .eq('user_id', userId);
+      if (delError) throw delError;
+
+      if (selectionRows.length > 0) {
+        const { error: insError } = await supabase
+          .from('user_player_selections')
+          .insert(selectionRows);
+        if (insError) throw insError;
+      }
+
       await supabase
         .from('user_profiles')
         .update({ players_locked: true })
