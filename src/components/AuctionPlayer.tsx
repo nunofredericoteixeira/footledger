@@ -116,7 +116,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
     if (data) {
       setUserBudget(Number(data.remaining_budget) || 0);
-      setFootledgers(Number(data.footledgers) || 0);
+      setFootledgers(Number(data.footledgers ?? 250) || 250);
       setNftName(data.dragon_nft_name || '');
       setNftAddress('');
       setNftNumber('');
@@ -309,7 +309,21 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   };
 
   const handlePlaceBid = async () => {
-    if (!selectedAuction || selectedAuction.status !== 'active') return;
+    if (!selectedAuction) return;
+
+    // Preview mode: simulate bid without hitting DB
+    if (selectedAuction.status === 'preview') {
+      const amount = Number(bidAmount);
+      if (!amount || amount <= 0) {
+        setError('Please enter a valid bid amount');
+        return;
+      }
+      setSelectedAuction({ ...selectedAuction, current_bid: amount });
+      setSuccess('Bid registered in preview (no blockchain/db write)');
+      setBidAmount('');
+      setTimeout(() => setSuccess(''), 3000);
+      return;
+    }
 
     if (!nftVerified) {
       setError('You must verify your Dragon NFT and Footledgers tokens to place bids');
@@ -392,10 +406,13 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+
+    if (days > 0) return `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+    if (hours > 0) return `${hours}h ${pad(minutes)}m ${pad(seconds)}s`;
+    return `${minutes}m ${pad(seconds)}s`;
   };
 
   if (selectedAuction) {
@@ -725,6 +742,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                 return (
                   <div
                     key={auction.id}
+                    onClick={() => setSelectedAuction(auction)}
                     className="bg-black/60 backdrop-blur-md rounded-2xl p-6 border border-purple-400/30 hover:border-purple-400 transition-all"
                   >
                     <h3 className="text-2xl font-bold text-white mb-1">{player.name}</h3>
@@ -751,8 +769,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                       )}
                     </div>
                     <button
-                      disabled
-                      className="w-full py-3 bg-gray-600 text-white font-bold rounded-lg cursor-not-allowed"
+                      className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2"
                     >
                       Licitar
                     </button>
