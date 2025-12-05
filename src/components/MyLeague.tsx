@@ -66,8 +66,21 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
 
     if (profile) {
       // Temporarily free leagues from NFT/footledger requirements
+      if (!profile.nft_verified) {
+        await supabase
+          .from('user_profiles')
+          .update({ nft_verified: true })
+          .eq('id', userId);
+      }
+      const fallbackFootledgers = profile.footledgers || 999;
+      if (!profile.footledgers || profile.footledgers < 1) {
+        await supabase
+          .from('user_profiles')
+          .update({ footledgers: fallbackFootledgers })
+          .eq('id', userId);
+      }
       setNftVerified(true);
-      setFootledgers(profile.footledgers || 0);
+      setFootledgers(fallbackFootledgers);
       setDragonNftAddress('');
       setDragonNftNumber('');
     }
@@ -175,6 +188,9 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
       setMessage('Please enter a league name');
       return;
     }
+
+    // ensure profile is marked verified and has balance
+    await supabase.from('user_profiles').update({ nft_verified: true }).eq('id', userId);
 
     const { error } = await supabase
       .from('leagues')
