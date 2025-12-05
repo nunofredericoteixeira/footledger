@@ -11,6 +11,7 @@ type AuthMode = 'login' | 'register' | 'forgot';
 
 export default function AuthForm({ onSuccess, onRegisterSuccess }: AuthFormProps) {
   const [mode, setMode] = useState<AuthMode>('login');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -74,13 +75,32 @@ export default function AuthForm({ onSuccess, onRegisterSuccess }: AuthFormProps
         if (signInError) throw signInError;
         onSuccess();
       } else {
+        if (!username.trim()) {
+          throw new Error('Please choose a username');
+        }
+        // Ensure username uniqueness
+        const { data: existingUsername, error: usernameError } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('username', username.trim())
+          .maybeSingle();
+        if (usernameError && usernameError.code !== 'PGRST116') throw usernameError;
+        if (existingUsername) {
+          throw new Error('Username already exists, choose another.');
+        }
+
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
+          options: { data: { username: username.trim() } },
         });
 
         if (signUpError) throw signUpError;
         if (data.user) {
+          // Upsert username into profile for display/use
+          await supabase
+            .from('user_profiles')
+            .upsert({ id: data.user.id, username: username.trim() }, { onConflict: 'id' });
           onRegisterSuccess(data.user.id);
         }
       }
@@ -121,6 +141,28 @@ export default function AuthForm({ onSuccess, onRegisterSuccess }: AuthFormProps
                 />
               </div>
             </div>
+
+            {mode !== 'forgot' && (
+              <>
+                {mode === 'register' && (
+                  <div>
+                    <label className="block text-sm font-medium text-cyan-200 mb-2">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                        className="w-full pl-4 pr-4 py-3 bg-blue-900 border border-cyan-500/30 text-white rounded-lg focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all"
+                        placeholder="Choose a unique username"
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {mode !== 'forgot' && (
               <div>
