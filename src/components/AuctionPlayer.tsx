@@ -325,7 +325,17 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
     // Preview mode: simulate bid without hitting DB
     if (selectedAuction.status === 'preview') {
-      setSelectedAuction({ ...selectedAuction, current_bid: amount });
+      const updated = { ...selectedAuction, current_bid: amount };
+      setSelectedAuction(updated);
+      setBids([
+        {
+          id: `local-${Date.now()}`,
+          user_id: userId,
+          bid_amount: amount,
+          created_at: new Date().toISOString(),
+        },
+        ...bids,
+      ]);
       setSuccess('Bid registered in preview (no blockchain/db write)');
       setBidAmount('');
       setTimeout(() => setSuccess(''), 3000);
@@ -404,9 +414,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
   if (selectedAuction) {
     const player = selectedAuction.auction_players;
-    const minBid = selectedAuction.current_bid > 0
-      ? selectedAuction.current_bid + 1000000
-      : selectedAuction.starting_bid;
+    const minBid = (selectedAuction.current_bid || selectedAuction.starting_bid || 0) + 1;
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-purple-900 to-pink-900 relative">
@@ -484,7 +492,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
                 <div className="text-center mb-8">
                   <div className="text-5xl font-bold text-purple-400 mb-2">
-                    €{formatValue(selectedAuction.current_bid || selectedAuction.starting_bid)}
+                    {formatValue(selectedAuction.current_bid || selectedAuction.starting_bid)} FL
                   </div>
                   <p className="text-purple-200">
                     {selectedAuction.current_bid > 0 ? 'Current Highest Bid' : 'Starting Bid'}
@@ -492,7 +500,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                 </div>
 
                 <div className="bg-purple-500/10 rounded-lg p-4 mb-4">
-                  <p className="text-purple-200 text-sm">Your Budget: €{formatValue(userBudget)}</p>
+                  <p className="text-purple-200 text-sm">Your Budget: {formatValue(footledgers)} FL</p>
                 </div>
 
                 <div className="mb-4">
@@ -501,7 +509,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     type="number"
                     value={bidAmount}
                     onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder={`Min: €${formatValue(minBid)}`}
+                    placeholder={`Min: ${formatValue(minBid)} FL`}
                     className="w-full px-4 py-3 bg-purple-900/50 border border-purple-500/30 text-white rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent"
                   />
                 </div>
@@ -552,7 +560,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                           </span>
                         </div>
                         <span className="text-purple-200 font-bold">
-                          €{formatValue(bid.bid_amount)}
+                          {formatValue(bid.bid_amount)} FL
                         </span>
                       </div>
                     ))}
