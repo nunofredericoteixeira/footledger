@@ -1,26 +1,15 @@
 -- Clear the username for the admin with the given email, keeping is_admin intact.
--- Run this in Supabase SQL editor.
+-- Run this in the Supabase SQL editor.
 
--- Ensure column exists (safe if already present)
-do $$
-begin
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_name = 'user_profiles'
-      and column_name = 'username'
-  ) then
-    alter table user_profiles add column username text;
-  end if;
-end;
-$$;
+-- Add column if missing
+alter table user_profiles add column if not exists username text;
 
-with target as (
-  select id from auth.users where email = 'nunofredericoteixeira@gmail.com' limit 1
-)
+-- Clear username for the target user
 update user_profiles
 set username = null
-where id in (select id from target);
+where id in (select id from auth.users where email = 'nunofredericoteixeira@gmail.com' limit 1);
 
 -- Optional: verify
-select id, username, is_admin from user_profiles where id in (select id from target);
+select id, username, is_admin
+from user_profiles
+where id in (select id from auth.users where email = 'nunofredericoteixeira@gmail.com' limit 1);
