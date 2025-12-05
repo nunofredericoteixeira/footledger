@@ -205,6 +205,7 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
       .single();
 
     if (error) {
+      console.error('Error creating league:', error);
       setMessage('Error creating league: ' + error.message);
     } else {
       setMessage('League created successfully!');
@@ -217,6 +218,8 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
         },
         ...prev
       ]);
+      // Refresh from backend to ensure consistency with policies/counts
+      loadMyLeagues();
       setTimeout(() => setMessage(''), 3000);
     }
   };
