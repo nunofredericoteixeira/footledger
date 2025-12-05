@@ -65,7 +65,8 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
       .maybeSingle();
 
     if (profile) {
-      setNftVerified(profile.nft_verified || false);
+      // Temporarily free leagues from NFT/footledger requirements
+      setNftVerified(true);
       setFootledgers(profile.footledgers || 0);
       setDragonNftAddress('');
       setDragonNftNumber('');
@@ -170,11 +171,6 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
   };
 
   const handleCreateLeague = async () => {
-    if (!nftVerified) {
-      setMessage('You need to verify your NFT to create a league');
-      return;
-    }
-
     if (!leagueName.trim()) {
       setMessage('Please enter a league name');
       return;
@@ -186,7 +182,7 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
         name: leagueName.trim(),
         owner_id: userId,
         owner_nft_verified: true,
-        entry_fee: 100,
+        entry_fee: 0,
         max_members: 20
       });
 
@@ -224,7 +220,7 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
     if (error) {
       setMessage('Error sending invitation: ' + error.message);
     } else {
-      setMessage('Invitation sent! The invitee will need 100 footledgers to accept.');
+      setMessage('Invitation sent!');
       setInviteEmail('');
       setShowInviteModal(false);
       setSelectedLeagueId(null);
@@ -233,11 +229,6 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
   };
 
   const handleAcceptInvitation = async (invitationId: string, leagueId: string) => {
-    if (footledgers < 100) {
-      setMessage('You need at least 100 footledgers to accept this invitation');
-      return;
-    }
-
     const { error: updateError } = await supabase
       .from('league_invitations')
       .update({ status: 'accepted' })
@@ -261,18 +252,7 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
       return;
     }
 
-    const { error: footledgerError } = await supabase
-      .from('user_profiles')
-      .update({ footledgers: footledgers - 100 })
-      .eq('id', userId);
-
-    if (footledgerError) {
-      setMessage('Error deducting footledgers: ' + footledgerError.message);
-      return;
-    }
-
-    setMessage('Successfully joined league! 100 footledgers deducted.');
-    setFootledgers(footledgers - 100);
+    setMessage('Successfully joined league!');
     loadInvitations();
     setTimeout(() => setMessage(''), 3000);
   };
