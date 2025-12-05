@@ -103,8 +103,11 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         };
       });
 
-      // Sort primarily by total points (desc), then name (asc).
+      // Sort primarily by best cost per point (lower is better), fallback to total points desc, then name.
       stats.sort((a, b) => {
+        const aCost = a.costPerPoint ?? Infinity;
+        const bCost = b.costPerPoint ?? Infinity;
+        if (aCost !== bCost) return aCost - bCost;
         if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
         return a.playerName.localeCompare(b.playerName);
       });

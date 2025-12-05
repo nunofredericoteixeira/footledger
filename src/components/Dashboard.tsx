@@ -56,20 +56,27 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   }, [userId]);
 
   const loadWelcomeName = async () => {
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('username')
-      .eq('id', userId)
-      .maybeSingle();
-    if (profile?.username) {
-      setWelcomeName(profile.username);
-      return;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const metaUsername = authData.user?.user_metadata?.username;
+      if (metaUsername) {
+        setWelcomeName(metaUsername);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('username')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profile?.username) {
+        setWelcomeName(profile.username);
+        return;
+      }
+    } catch (e) {
+      console.error('Failed to load welcome name', e);
     }
-    const { data: authData } = await supabase.auth.getUser();
-    const metaUsername = authData.user?.user_metadata?.username;
-    if (metaUsername) {
-      setWelcomeName(metaUsername);
-    }
+    setWelcomeName('Gestor');
   };
 
   const changeLanguage = async (newLang: typeof language) => {
