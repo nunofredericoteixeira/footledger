@@ -37,21 +37,25 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const { language, setLanguage } = useLanguage();
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string>('');
+  const [showWelcome, setShowWelcome] = useState(true);
 
   useEffect(() => {
     checkUserSelections();
     checkSelectionPeriods();
     loadWelcomeName();
+    const timer = setTimeout(() => setShowWelcome(false), 10000);
 
     const interval = setInterval(() => {
       checkSelectionPeriods();
     }, 60000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
   }, [userId]);
 
   const loadWelcomeName = async () => {
-    // Try user_profiles.username first
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('username')
@@ -60,13 +64,6 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
     if (profile?.username) {
       setWelcomeName(profile.username);
       return;
-    }
-    // Fallback to auth user email (hidden from UI) -> extract before @
-    const { data: authData } = await supabase.auth.getUser();
-    const email = authData.user?.email || '';
-    if (email) {
-      const beforeAt = email.split('@')[0];
-      setWelcomeName(beforeAt);
     }
   };
 
@@ -246,7 +243,20 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
 
       <div className="max-w-6xl mx-auto px-4 pb-12 relative z-20">
         <h1 className="text-5xl font-bold text-white text-center mb-3">{getTranslation('dashboard.title', language)}</h1>
-        <p className="text-cyan-200 text-center mb-12 text-lg">{getTranslation('dashboard.subtitle', language)}</p>
+        <p className="text-cyan-200 text-center mb-6 text-lg">{getTranslation('dashboard.subtitle', language)}</p>
+        {showWelcome && (
+          <div className="mt-2 mb-8 flex items-center gap-4 bg-black/50 border border-cyan-400/40 rounded-xl px-5 py-4 shadow-lg">
+            <img
+              src="/FL_Logo.png"
+              alt="FootLedger Logo"
+              className="w-12 h-12 object-contain drop-shadow"
+            />
+            <div>
+              <p className="text-cyan-200 text-sm">Bem-vindo</p>
+              <p className="text-white text-2xl font-bold leading-tight">{welcomeName || 'Gestor'}</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <button
@@ -569,18 +579,20 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
           </div>
         </div>
 
-        {/* Welcome banner */}
-        <div className="max-w-7xl mx-auto mt-6 flex items-center gap-4 bg-black/50 border border-cyan-400/40 rounded-xl px-5 py-4 shadow-lg">
-          <img
-            src="/FL_Logo.png"
-            alt="FootLedger Logo"
-            className="w-12 h-12 object-contain drop-shadow"
-          />
-          <div>
-            <p className="text-cyan-200 text-sm">Bem-vindo</p>
-            <p className="text-white text-2xl font-bold leading-tight">{welcomeName || 'Gestor'}</p>
+        {/* Welcome banner (auto-hide after 10s) */}
+        {showWelcome && (
+          <div className="max-w-7xl mx-auto mt-4 flex items-center gap-4 bg-black/50 border border-cyan-400/40 rounded-xl px-5 py-4 shadow-lg">
+            <img
+              src="/FL_Logo.png"
+              alt="FootLedger Logo"
+              className="w-12 h-12 object-contain drop-shadow"
+            />
+            <div>
+              <p className="text-cyan-200 text-sm">Bem-vindo</p>
+              <p className="text-white text-2xl font-bold leading-tight">{welcomeName || 'Gestor'}</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
   );
 }
