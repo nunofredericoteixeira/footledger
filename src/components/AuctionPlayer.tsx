@@ -345,11 +345,6 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       return;
     }
 
-    if (!nftVerified) {
-      setError('You must verify your Dragon NFT and Footledgers tokens to place bids');
-      return;
-    }
-
     if (amount > footledgers) {
       setError('Insufficient budget for this bid');
       return;
