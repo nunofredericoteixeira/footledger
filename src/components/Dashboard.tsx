@@ -36,10 +36,12 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const [hasPlayers, setHasPlayers] = useState(false);
   const { language, setLanguage } = useLanguage();
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+  const [welcomeName, setWelcomeName] = useState<string>('');
 
   useEffect(() => {
     checkUserSelections();
     checkSelectionPeriods();
+    loadWelcomeName();
 
     const interval = setInterval(() => {
       checkSelectionPeriods();
@@ -47,6 +49,26 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
 
     return () => clearInterval(interval);
   }, [userId]);
+
+  const loadWelcomeName = async () => {
+    // Try user_profiles.username first
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('username')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profile?.username) {
+      setWelcomeName(profile.username);
+      return;
+    }
+    // Fallback to auth user email (hidden from UI) -> extract before @
+    const { data: authData } = await supabase.auth.getUser();
+    const email = authData.user?.email || '';
+    if (email) {
+      const beforeAt = email.split('@')[0];
+      setWelcomeName(beforeAt);
+    }
+  };
 
   const changeLanguage = async (newLang: typeof language) => {
     setLanguage(newLang);
@@ -544,9 +566,22 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
               </div>
             </button>
           )}
+          </div>
+        </div>
+
+        {/* Welcome banner */}
+        <div className="max-w-7xl mx-auto mt-6 flex items-center gap-4 bg-black/50 border border-cyan-400/40 rounded-xl px-5 py-4 shadow-lg">
+          <img
+            src="/FL_Logo.png"
+            alt="FootLedger Logo"
+            className="w-12 h-12 object-contain drop-shadow"
+          />
+          <div>
+            <p className="text-cyan-200 text-sm">Bem-vindo</p>
+            <p className="text-white text-2xl font-bold leading-tight">{welcomeName || 'Gestor'}</p>
+          </div>
         </div>
       </div>
-    </div>
   );
 }
 
