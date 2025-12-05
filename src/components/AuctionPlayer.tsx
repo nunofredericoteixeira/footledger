@@ -98,7 +98,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   }, []);
 
   useEffect(() => {
-    if (selectedAuction) {
+    if (selectedAuction && selectedAuction.status !== 'preview') {
       loadBids(selectedAuction.id);
       const interval = setInterval(() => {
         loadBids(selectedAuction.id);
@@ -240,6 +240,10 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   };
 
   const loadBids = async (auctionId: string) => {
+    // Skip DB fetch for preview auctions
+    const preview = selectedAuction && selectedAuction.status === 'preview' && selectedAuction.id === auctionId;
+    if (preview) return;
+
     const { data } = await supabase
       .from('auction_bids')
       .select('*')
