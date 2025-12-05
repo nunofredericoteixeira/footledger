@@ -65,6 +65,11 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
       setWelcomeName(profile.username);
       return;
     }
+    const { data: authData } = await supabase.auth.getUser();
+    const metaUsername = authData.user?.user_metadata?.username;
+    if (metaUsername) {
+      setWelcomeName(metaUsername);
+    }
   };
 
   const changeLanguage = async (newLang: typeof language) => {

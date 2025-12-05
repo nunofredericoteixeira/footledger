@@ -12,6 +12,8 @@ interface PlayerStats {
   playerId: string;
   playerName: string;
   playerTeam: string;
+  playerValue?: number;
+  costPerPoint?: number;
   totalPoints: number;
   gamesPlayed: number;
   position: number;
@@ -77,18 +79,22 @@ function TopPlayers({ onBack }: TopPlayersProps) {
       });
 
       // Get player info (club/position/league) from player_pool (all rows)
-      const pool = await fetchAll<{ id: string; name: string; club: string; position: string | null; league: string | null }>(
+      const pool = await fetchAll<{ id: string; name: string; club: string; position: string | null; league: string | null; value: number | null }>(
         'player_pool',
-        'id, name, club, position, league'
+        'id, name, club, position, league, value'
       );
 
       // Build stats from the pool (3022 jogadores), mesmo que tenham 0 pontos.
       const stats: PlayerStats[] = (pool || []).map((p) => {
         const perf = perfMap.get(p.name) || { total: 0, games: 0 };
+        const value = p.value || 0;
+        const costPerPoint = perf.total > 0 ? value / perf.total : undefined;
         return {
           playerId: p.id,
           playerName: p.name,
           playerTeam: p.club,
+          playerValue: value,
+          costPerPoint,
           totalPoints: perf.total,
           gamesPlayed: perf.games,
           position: 0,
@@ -269,6 +275,13 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                           Avg: <span className="text-white font-bold">{(player.totalPoints / Math.max(player.gamesPlayed, 1)).toFixed(2)}</span> pts/game
                         </span>
                       </div>
+                      {player.costPerPoint !== undefined && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-cyan-200">
+                            Custo/pt: <span className="text-white font-bold">€{Math.round(player.costPerPoint).toLocaleString()}</span>
+                          </span>
+                        </div>
+                      )}
                       {player.league && (
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4 text-cyan-400" />
