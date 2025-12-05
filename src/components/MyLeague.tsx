@@ -192,7 +192,7 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
     // ensure profile is marked verified and has balance
     await supabase.from('user_profiles').update({ nft_verified: true }).eq('id', userId);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('leagues')
       .insert({
         name: leagueName.trim(),
@@ -200,7 +200,9 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
         owner_nft_verified: true,
         entry_fee: 0,
         max_members: 20
-      });
+      })
+      .select('id, name, owner_id, entry_fee, max_members, created_at')
+      .single();
 
     if (error) {
       setMessage('Error creating league: ' + error.message);
@@ -208,7 +210,13 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
       setMessage('League created successfully!');
       setLeagueName('');
       setShowCreateLeague(false);
-      loadMyLeagues();
+      setMyLeagues((prev) => [
+        {
+          ...(data as League),
+          member_count: 0
+        },
+        ...prev
+      ]);
       setTimeout(() => setMessage(''), 3000);
     }
   };
