@@ -61,7 +61,6 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [userBudget, setUserBudget] = useState(0);
   const [nftName, setNftName] = useState('');
   const [nftAddress, setNftAddress] = useState('');
   const [nftNumber, setNftNumber] = useState('');
@@ -115,7 +114,6 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       .maybeSingle();
 
     if (data) {
-      setUserBudget(Number(data.remaining_budget) || 0);
       setFootledgers(Number(data.footledgers ?? 250) || 250);
       setNftName(data.dragon_nft_name || '');
       setNftAddress('');
@@ -340,6 +338,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         },
         ...bids,
       ]);
+      setFootledgers((prev) => Math.max(0, prev - amount));
       setSuccess('Bid registered in preview (no blockchain/db write)');
       setBidAmount('');
       setTimeout(() => setSuccess(''), 3000);
@@ -351,7 +350,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       return;
     }
 
-    if (amount > userBudget) {
+    if (amount > footledgers) {
       setError('Insufficient budget for this bid');
       return;
     }
@@ -379,6 +378,13 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         .eq('id', selectedAuction.id);
 
       if (updateError) throw updateError;
+
+      // Deduct FL from user profile
+      await supabase
+        .from('user_profiles')
+        .update({ footledgers: Math.max(0, footledgers - amount) })
+        .eq('id', userId);
+      setFootledgers((prev) => Math.max(0, prev - amount));
 
       setSuccess('Bid placed successfully!');
       setBidAmount('');
