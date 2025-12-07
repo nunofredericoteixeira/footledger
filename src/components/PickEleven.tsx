@@ -1215,7 +1215,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     }`}
                   >
                     <div className="text-[10px] font-bold text-white truncate">
-                      {startingEleven[index]!.name || ''}
+                      {startingEleven[index]?.name || 'Jogador'}
                     </div>
                     <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
                     {startingEleven[index]!.total_points !== undefined && (
@@ -1267,7 +1267,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                           validated || !isSelectionOpen ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
                         }`}
                       >
-                        <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name || ''}</div>
+                        <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name || 'Jogador'}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
                         {sub.total_points !== undefined && (
                           <div className="text-[8px] text-gray-800 font-semibold">
