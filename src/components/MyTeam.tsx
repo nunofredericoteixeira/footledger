@@ -135,40 +135,33 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         return acc;
       }, {} as Record<string, number>);
 
-      // Useful points: only when selected (starting + subs)
+      // Useful points: only when selected (starting + subs) within the week range
       const { data: weeklySelections } = await supabase
         .from('weekly_eleven_selections')
-        .select('starting_eleven, substitutes, week_start_date')
+        .select('starting_eleven, substitutes, week_start_date, week_end_date')
         .eq('user_id', userId);
 
-      const weekSelectionMap = new Map<string, Set<string>>();
-      (weeklySelections || []).forEach((sel: any) => {
-        const ids = [
-          ...(sel.starting_eleven || []).map((p: any) => p.id),
-          ...(sel.substitutes || []).map((p: any) => p.id),
-        ].filter(Boolean);
-        if (!sel.week_start_date) return;
-        weekSelectionMap.set(sel.week_start_date, new Set(ids));
-      });
+      const selectionRanges =
+        (weeklySelections || []).map((sel: any) => ({
+          start: sel.week_start_date ? new Date(sel.week_start_date) : null,
+          end: sel.week_end_date ? new Date(sel.week_end_date) : null,
+          ids: new Set([
+            ...(sel.starting_eleven || []).map((p: any) => p.id),
+            ...(sel.substitutes || []).map((p: any) => p.id),
+          ].filter(Boolean)),
+        })).filter((s) => s.start && s.end);
 
       const usefulTotals: Record<string, number> = {};
       const usefulWeekly: Record<string, number> = {};
-
-      // Current week start (Tuesday)
       const now = new Date();
-      const day = now.getDay();
-      const daysToTuesday = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
-      const tuesday = new Date(now);
-      tuesday.setDate(now.getDate() + daysToTuesday);
-      tuesday.setHours(0, 0, 0, 0);
-      const currentWeekStart = tuesday.toISOString().split('T')[0];
 
       (weeklyRows || []).forEach((row) => {
-        const wk = row.week_start_date || '';
-        const set = wk ? weekSelectionMap.get(wk) : undefined;
-        if (set && set.has(row.player_id)) {
+        const wkDate = row.week_start_date ? new Date(row.week_start_date) : null;
+        if (!wkDate) return;
+        const selection = selectionRanges.find((s) => s.start && s.end && wkDate >= s.start && wkDate <= s.end);
+        if (selection && selection.ids.has(row.player_id)) {
           usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
-          if (wk === currentWeekStart) {
+          if (now >= (selection.start as Date) && now <= (selection.end as Date)) {
             usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
           }
         }
