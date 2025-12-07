@@ -250,7 +250,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
   const totalUseful = players.reduce((sum, p) => sum + p.total_points_useful, 0);
   const weeklyUseful = players.reduce((sum, p) => sum + p.weekly_points_useful, 0);
-  const currentRatio = formatRatio(totalPoints, initialBudget);
+  const currentRatio = formatRatio(totalUseful, initialBudget);
 
   const getPointsIcon = (points: number) => {
     if (points > 0) return <TrendingUp className="w-4 h-4 text-green-400" />;
