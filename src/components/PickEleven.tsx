@@ -14,6 +14,7 @@ interface Player {
   total_points?: number;
   weekly_points?: number;
   isRoster?: boolean;
+  cost_per_point?: number;
 }
 
 interface PickElevenProps {
@@ -569,6 +570,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...player,
           total_points: getTotalPoints(player.name),
           weekly_points: weeklyMap[player.id] || 0,
+          cost_per_point: getTotalPoints(player.name) > 0 ? player.value / getTotalPoints(player.name) : undefined,
           isRoster: true,
         }));
 
@@ -577,6 +579,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...p,
           total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
           isRoster: rosterPlayers.some(r => r.id === p.id),
         }));
         setAllPlayers(allEnriched);
@@ -586,6 +589,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...p,
           total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
@@ -598,8 +602,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       if (rosterWithPoints.length === 0 && poolAll) {
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
-          total_points: totalById[p.id] ?? totalByName[p.name] ?? 0,
+          total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
@@ -1305,6 +1310,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.cost_per_point !== undefined && (
+                      <div className="text-[8px] text-white/90">Custo/pt: €{Math.round(player.cost_per_point).toLocaleString()}</div>
+                    )}
                     {player.weekly_points !== undefined && (
                       <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
                     )}
@@ -1338,6 +1346,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                       </div>
                       <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                       <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                      {player.cost_per_point !== undefined && (
+                        <div className="text-[8px] text-white/90">Custo/pt: €{Math.round(player.cost_per_point).toLocaleString()}</div>
+                      )}
                       {player.weekly_points !== undefined && (
                         <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
                       )}
@@ -1371,6 +1382,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.cost_per_point !== undefined && (
+                      <div className="text-[8px] text-white/90">Custo/pt: €{Math.round(player.cost_per_point).toLocaleString()}</div>
+                    )}
                     {player.weekly_points !== undefined && (
                       <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
                     )}
@@ -1404,6 +1418,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     </div>
                     <div className="text-[8px] text-blue-100 truncate">{player.club}</div>
                     <div className="text-[8px] text-blue-200 font-semibold">{POSITION_SHORT_MAP[player.position]} • €{(player.value / 1000000).toFixed(1)}M</div>
+                    {player.cost_per_point !== undefined && (
+                      <div className="text-[8px] text-white/90">Custo/pt: €{Math.round(player.cost_per_point).toLocaleString()}</div>
+                    )}
                     {player.weekly_points !== undefined && (
                       <div className="text-[8px] text-yellow-200">Semana: {player.weekly_points.toFixed(2)}</div>
                     )}
