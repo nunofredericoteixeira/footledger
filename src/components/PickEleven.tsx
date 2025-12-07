@@ -334,45 +334,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   }, [userId]);
 
   const checkSelectionPeriod = () => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const hours = now.getHours();
-
-    const isTuesday = dayOfWeek === 2;
-    const isTuesdayOpen = isTuesday && hours < 17;
-
-    if (isTuesdayOpen) {
-      setIsSelectionOpen(true);
-      const closeTime = new Date(now);
-      closeTime.setHours(17, 0, 0, 0);
-      const msUntilClose = closeTime.getTime() - now.getTime();
-      const hoursUntilClose = Math.floor(msUntilClose / (1000 * 60 * 60));
-      const minutesUntilClose = Math.floor((msUntilClose % (1000 * 60 * 60)) / (1000 * 60));
-      setClosingMessage(`Selection closes in ${hoursUntilClose}h ${minutesUntilClose}m`);
-    } else {
-      setIsSelectionOpen(false);
-
-      const nextTuesday = new Date(now);
-      let daysUntilTuesday;
-
-      if (dayOfWeek === 2 && hours >= 17) {
-        daysUntilTuesday = 7;
-      } else if (dayOfWeek < 2) {
-        daysUntilTuesday = 2 - dayOfWeek;
-      } else {
-        daysUntilTuesday = 9 - dayOfWeek;
-      }
-
-      nextTuesday.setDate(now.getDate() + daysUntilTuesday);
-      nextTuesday.setHours(0, 0, 0, 0);
-
-      const msUntilOpen = nextTuesday.getTime() - now.getTime();
-      const daysUntil = Math.floor(msUntilOpen / (1000 * 60 * 60 * 24));
-      const hoursUntil = Math.floor((msUntilOpen % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutesUntil = Math.floor((msUntilOpen % (1000 * 60 * 60)) / (1000 * 60));
-
-      setClosingMessage(`Opens in ${daysUntil}d ${hoursUntil}h ${minutesUntil}m`);
-    }
+    // Temporarily keep selection open regardless of day/hour
+    setIsSelectionOpen(true);
+    setClosingMessage('Seleção temporariamente desbloqueada');
   };
 
   const buildBestEleven = (source: Player[], useWeekly: boolean, preferRoster: boolean, onlyRoster: boolean) => {
