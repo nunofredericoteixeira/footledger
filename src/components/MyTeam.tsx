@@ -201,6 +201,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const totalPoints = players.reduce((sum, p) => sum + p.total_points, 0);
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
   const currentRatio = formatRatio(totalPoints, initialBudget);
+  const ratioValue = lastWeekTotal !== 0 ? totalPoints / lastWeekTotal : null;
 
   const getPointsIcon = (points: number) => {
     if (points > 0) return <TrendingUp className="w-4 h-4 text-green-400" />;
@@ -279,6 +280,12 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
               <div className="text-green-200 text-sm mb-1">{getTranslation('screens.weeklyPoints', language)}</div>
               <div className="text-3xl font-bold text-white">{lastWeekTotal.toFixed(1)}</div>
             </div>
+            <div className="bg-cyan-500/20 backdrop-blur-md border border-cyan-400/50 rounded-xl py-4 px-6">
+              <div className="text-cyan-200 text-sm mb-1">Rácio T/S</div>
+              <div className="text-3xl font-bold text-white">
+                {ratioValue !== null ? ratioValue.toFixed(2) : '—'}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -323,6 +330,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                       )}
                     </div>
                   </th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">Rácio T/S</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,6 +367,15 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                           {player.last_week_points > 0 ? '+' : ''}{player.last_week_points.toFixed(1)}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      {player.last_week_points !== 0 ? (
+                        <div className="text-lg font-bold text-cyan-100">
+                          {(player.total_points / player.last_week_points).toFixed(2)}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-cyan-300/70">—</div>
+                      )}
                     </td>
                   </tr>
                 ))}
