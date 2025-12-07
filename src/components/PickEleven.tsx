@@ -495,6 +495,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         'id, name, league, club, position, value'
       );
       const playerMap = new Map(poolAll.map((p) => [p.id, p]));
+      const playerMap = new Map(poolAll.map((p) => [p.id, p]));
 
       // Points (total season) and weekly points
       const perf = await fetchAll<{ player_name: string; performance_score: number }>(
@@ -634,24 +635,24 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .eq('week_start_date', weekStartDate)
         .maybeSingle();
 
-      if (existingSelection) {
-        const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => {
-          const base = { ...p, ...(playerMap.get(p.id) || {}) };
-          const totalPts = getTotalPoints(base.name);
-          const totalUseful = usefulTotals[p.id] || 0;
-          return {
-            ...base,
-            total_points: totalPts ?? p.total_points ?? 0,
-            weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
-            total_points_useful: totalUseful,
-            weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
-            cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
-            isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
-          };
-        });
+      const enrichSelection = (list: Player[] | null | undefined) => (list || []).map((p) => {
+        const base = { ...p, ...(playerMap.get(p.id) || {}) };
+        const totalPts = getTotalPoints(base.name);
+        const totalUseful = usefulTotals[p.id] || 0;
+        return {
+          ...base,
+          total_points: totalPts ?? p.total_points ?? 0,
+          weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+          total_points_useful: totalUseful,
+          weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
+          cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
+          isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
+        };
+      });
 
-        const startingElevenData = enrich(existingSelection.starting_eleven as Player[]);
-        const substitutesData = enrich(existingSelection.substitutes as Player[]);
+      if (existingSelection) {
+        const startingElevenData = enrichSelection(existingSelection.starting_eleven as Player[]);
+        const substitutesData = enrichSelection(existingSelection.substitutes as Player[]);
         const savedTactic = existingSelection.tactic_name || tacticToUse;
 
         if (savedTactic !== tacticToUse) {
@@ -683,23 +684,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         const lastSelection = lastSelections?.[0];
 
         if (lastSelection) {
-          const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => {
-            const base = { ...p, ...(playerMap.get(p.id) || {}) };
-            const totalPts = getTotalPoints(base.name);
-            const totalUseful = usefulTotals[p.id] || 0;
-            return {
-              ...base,
-              total_points: totalPts ?? p.total_points ?? 0,
-              weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
-              total_points_useful: totalUseful,
-              weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
-              cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
-              isRoster: rosterWithPoints.some(r => r.id === p.id),
-            };
-          });
-
-          const startingElevenData = enrich(lastSelection.starting_eleven as Player[]);
-          const substitutesData = enrich(lastSelection.substitutes as Player[]);
+          const startingElevenData = enrichSelection(lastSelection.starting_eleven as Player[]);
+          const substitutesData = enrichSelection(lastSelection.substitutes as Player[]);
           const savedTactic = lastSelection.tactic_name || tacticToUse;
 
           if (savedTactic !== tacticToUse) {
