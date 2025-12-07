@@ -501,9 +501,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         'player_name, performance_score'
       );
 
-      const weeklyPoints = await fetchAll<{ player_id: string; points: number; week_start_date?: string }>(
+      const weeklyPoints = await fetchAll<{ player_id: string; points: number; week_start_date?: string; created_at?: string }>(
         'player_weekly_points',
-        'player_id, points, week_start_date'
+        'player_id, points, week_start_date, created_at'
       );
 
       const totalByName = (perf || []).reduce((acc, row) => {
@@ -536,23 +536,38 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         (weeklySelections || []).map((sel: any) => ({
           start: sel.week_start_date ? new Date(sel.week_start_date) : null,
           end: sel.week_end_date ? new Date(sel.week_end_date) : null,
+          startStr: sel.week_start_date || '',
           ids: new Set([
             ...(sel.starting_eleven || []).map((p: Player) => p.id),
             ...(sel.substitutes || []).map((p: Player) => p.id),
           ].filter(Boolean)),
         })).filter((s) => s.start && s.end);
 
+      const getWeekStartStr = (d: Date) => {
+        const day = d.getDay();
+        const diff = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
+        const tuesday = new Date(d);
+        tuesday.setDate(d.getDate() + diff);
+        tuesday.setHours(0, 0, 0, 0);
+        return tuesday.toISOString().split('T')[0];
+      };
+
       const usefulTotals: Record<string, number> = {};
       const usefulWeekly: Record<string, number> = {};
       const now = new Date();
+      const currentWeekStartStr = getWeekStartStr(now);
 
       (weeklyPoints || []).forEach((row) => {
-        const wkDate = row.week_start_date ? new Date(row.week_start_date) : null;
-        if (!wkDate) return;
-        const selection = selectionRanges.find((s) => s.start && s.end && wkDate >= s.start && wkDate <= s.end);
+        const dateStr = row.week_start_date || row.created_at || '';
+        if (!dateStr) return;
+        const wkDate = new Date(dateStr);
+        const rowWeekStartStr = getWeekStartStr(wkDate);
+        const selection =
+          selectionRanges.find((s) => s.startStr === rowWeekStartStr) ||
+          selectionRanges.find((s) => s.start && s.end && wkDate >= s.start && wkDate <= s.end);
         if (selection && selection.ids.has(row.player_id)) {
           usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
-          if (now >= (selection.start as Date) && now <= (selection.end as Date)) {
+          if (rowWeekStartStr === currentWeekStartStr) {
             usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
           }
         }
