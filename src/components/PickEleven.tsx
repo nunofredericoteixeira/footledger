@@ -13,6 +13,9 @@ interface Player {
   value: number;
   total_points?: number;
   weekly_points?: number;
+  total_points_useful?: number;
+  weekly_points_useful?: number;
+  cost_per_point_useful?: number;
   isRoster?: boolean;
   cost_per_point?: number;
 }
@@ -498,9 +501,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         'player_name, performance_score'
       );
 
-      const weeklyPoints = await fetchAll<{ player_id: string; points: number }>(
+      const weeklyPoints = await fetchAll<{ player_id: string; points: number; week_start_date?: string }>(
         'player_weekly_points',
-        'player_id, points'
+        'player_id, points, week_start_date'
       );
 
       const totalByName = (perf || []).reduce((acc, row) => {
@@ -523,6 +526,43 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         return acc;
       }, {} as Record<string, number>);
 
+      // Useful points (apenas quando escolhido)
+      const { data: weeklySelections } = await supabase
+        .from('weekly_eleven_selections')
+        .select('starting_eleven, substitutes, week_start_date')
+        .eq('user_id', userId);
+
+      const weekSelectionMap = new Map<string, Set<string>>();
+      (weeklySelections || []).forEach((sel: any) => {
+        const ids = [
+          ...(sel.starting_eleven || []).map((p: Player) => p.id),
+          ...(sel.substitutes || []).map((p: Player) => p.id),
+        ].filter(Boolean);
+        if (!sel.week_start_date) return;
+        weekSelectionMap.set(sel.week_start_date, new Set(ids));
+      });
+
+      const usefulTotals: Record<string, number> = {};
+      const usefulWeekly: Record<string, number> = {};
+      const now = new Date();
+      const day = now.getDay();
+      const daysToTuesday = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
+      const tuesday = new Date(now);
+      tuesday.setDate(now.getDate() + daysToTuesday);
+      tuesday.setHours(0, 0, 0, 0);
+      const currentWeekStart = tuesday.toISOString().split('T')[0];
+
+      (weeklyPoints || []).forEach((row) => {
+        const wk = row.week_start_date || '';
+        const set = wk ? weekSelectionMap.get(wk) : undefined;
+        if (set && set.has(row.player_id)) {
+          usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
+          if (wk === currentWeekStart) {
+            usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
+          }
+        }
+      });
+
       let rosterWithPoints: Player[] = [];
 
       if (selections) {
@@ -530,20 +570,30 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           .map(s => s.player_pool)
           .filter((p): p is Player => p !== null);
 
-        rosterWithPoints = rosterPlayers.map(player => ({
-          ...player,
-          total_points: getTotalPoints(player.name),
-          weekly_points: weeklyMap[player.id] || 0,
-          cost_per_point: getTotalPoints(player.name) > 0 ? player.value / getTotalPoints(player.name) : undefined,
-          isRoster: true,
-        }));
+        rosterWithPoints = rosterPlayers.map(player => {
+          const totalPts = getTotalPoints(player.name);
+          const totalUseful = usefulTotals[player.id] || 0;
+          return {
+            ...player,
+            total_points: totalPts,
+            weekly_points: weeklyMap[player.id] || 0,
+            total_points_useful: totalUseful,
+            weekly_points_useful: usefulWeekly[player.id] || 0,
+            cost_per_point: totalPts > 0 ? player.value / totalPts : undefined,
+            cost_per_point_useful: totalUseful > 0 ? player.value / totalUseful : undefined,
+            isRoster: true,
+          };
+        });
 
         setAvailablePlayers(rosterWithPoints);
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
           total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          total_points_useful: usefulTotals[p.id] || 0,
+          weekly_points_useful: usefulWeekly[p.id] || 0,
           cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
+          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
           isRoster: rosterPlayers.some(r => r.id === p.id),
         }));
         setAllPlayers(allEnriched);
@@ -553,7 +603,10 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...p,
           total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          total_points_useful: usefulTotals[p.id] || 0,
+          weekly_points_useful: usefulWeekly[p.id] || 0,
           cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
+          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
@@ -568,7 +621,10 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...p,
           total_points: getTotalPoints(p.name),
           weekly_points: weeklyMap[p.id] || 0,
+          total_points_useful: usefulTotals[p.id] || 0,
+          weekly_points_useful: usefulWeekly[p.id] || 0,
           cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
+          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
