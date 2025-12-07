@@ -494,6 +494,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         'player_pool',
         'id, name, league, club, position, value'
       );
+      const playerMap = new Map(poolAll.map((p) => [p.id, p]));
 
       // Points (total season) and weekly points
       const perf = await fetchAll<{ player_name: string; performance_score: number }>(
@@ -516,7 +517,6 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       const getTotalPoints = (name: string) => {
         const key = normalizeName(name);
         if (key in totalByName) return totalByName[key];
-        // Tentativa aproximada: nome parcial ou completo (ex.: "isco" vs "francisco alarcon isco")
         const fallback = Object.entries(totalByName).find(([stored]) => stored.includes(key) || key.includes(stored));
         return fallback ? fallback[1] : 0;
       };
@@ -526,50 +526,26 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         return acc;
       }, {} as Record<string, number>);
 
-      // Useful points (apenas quando escolhido)
-      const { data: weeklySelections } = await supabase
-        .from('weekly_eleven_selections')
-        .select('starting_eleven, substitutes, week_start_date, week_end_date')
-        .eq('user_id', userId);
-
-      const selectionRanges =
-        (weeklySelections || []).map((sel: any) => ({
-          start: sel.week_start_date ? new Date(sel.week_start_date) : null,
-          end: sel.week_end_date ? new Date(sel.week_end_date) : null,
-          startStr: sel.week_start_date || '',
-          ids: new Set([
-            ...(sel.starting_eleven || []).map((p: Player) => p.id),
-            ...(sel.substitutes || []).map((p: Player) => p.id),
-          ].filter(Boolean)),
-        })).filter((s) => s.start && s.end);
-
-      const getWeekStartStr = (d: Date) => {
-        const day = d.getDay();
-        const diff = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
-        const tuesday = new Date(d);
-        tuesday.setDate(d.getDate() + diff);
-        tuesday.setHours(0, 0, 0, 0);
-        return tuesday.toISOString().split('T')[0];
-      };
-
+      // Useful points via view
+      const usefulRows = await fetchAll<{ player_id: string; points_useful: number; week_start_date: string }>(
+        'player_useful_points',
+        'player_id, points_useful, week_start_date'
+      );
       const usefulTotals: Record<string, number> = {};
       const usefulWeekly: Record<string, number> = {};
-      const now = new Date();
-      const currentWeekStartStr = getWeekStartStr(now);
-
-      (weeklyPoints || []).forEach((row) => {
-        const dateStr = row.week_start_date || row.created_at || '';
-        if (!dateStr) return;
-        const wkDate = new Date(dateStr);
-        const rowWeekStartStr = getWeekStartStr(wkDate);
-        const selection =
-          selectionRanges.find((s) => s.startStr === rowWeekStartStr) ||
-          selectionRanges.find((s) => s.start && s.end && wkDate >= s.start && wkDate <= s.end);
-        if (selection && selection.ids.has(row.player_id)) {
-          usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
-          if (rowWeekStartStr === currentWeekStartStr) {
-            usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
-          }
+      const currentWeekStartStr = (() => {
+        const now = new Date();
+        const day = now.getDay();
+        const diff = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
+        const tuesday = new Date(now);
+        tuesday.setDate(now.getDate() + diff);
+        tuesday.setHours(0, 0, 0, 0);
+        return tuesday.toISOString().split('T')[0];
+      })();
+      usefulRows.forEach((r) => {
+        usefulTotals[r.player_id] = (usefulTotals[r.player_id] || 0) + (r.points_useful || 0);
+        if (r.week_start_date === currentWeekStartStr) {
+          usefulWeekly[r.player_id] = (usefulWeekly[r.player_id] || 0) + (r.points_useful || 0);
         }
       });
 
@@ -659,12 +635,20 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .maybeSingle();
 
       if (existingSelection) {
-        const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
-          ...p,
-          total_points: getTotalPoints(p.name) ?? p.total_points ?? 0,
-          weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
-          isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
-        }));
+        const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => {
+          const base = { ...p, ...(playerMap.get(p.id) || {}) };
+          const totalPts = getTotalPoints(base.name);
+          const totalUseful = usefulTotals[p.id] || 0;
+          return {
+            ...base,
+            total_points: totalPts ?? p.total_points ?? 0,
+            weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+            total_points_useful: totalUseful,
+            weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
+            cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
+            isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
+          };
+        });
 
         const startingElevenData = enrich(existingSelection.starting_eleven as Player[]);
         const substitutesData = enrich(existingSelection.substitutes as Player[]);
@@ -699,12 +683,20 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         const lastSelection = lastSelections?.[0];
 
         if (lastSelection) {
-          const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => ({
-            ...p,
-            total_points: totalById[p.id] ?? totalByName[p.name] ?? p.total_points ?? 0,
-            weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
-            isRoster: rosterWithPoints.some(r => r.id === p.id),
-          }));
+          const enrich = (list: Player[] | null | undefined) => (list || []).map((p) => {
+            const base = { ...p, ...(playerMap.get(p.id) || {}) };
+            const totalPts = getTotalPoints(base.name);
+            const totalUseful = usefulTotals[p.id] || 0;
+            return {
+              ...base,
+              total_points: totalPts ?? p.total_points ?? 0,
+              weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+              total_points_useful: totalUseful,
+              weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
+              cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
+              isRoster: rosterWithPoints.some(r => r.id === p.id),
+            };
+          });
 
           const startingElevenData = enrich(lastSelection.starting_eleven as Player[]);
           const substitutesData = enrich(lastSelection.substitutes as Player[]);
