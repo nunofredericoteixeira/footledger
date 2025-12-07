@@ -16,7 +16,9 @@ interface Player {
 interface PlayerWithPoints extends Player {
   total_points: number;
   last_week_points: number;
-  cost_per_point?: number;
+  total_points_useful: number;
+  weekly_points_useful: number;
+  cost_per_point_useful?: number;
 }
 
 interface MyTeamProps {
@@ -124,25 +126,68 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
       };
 
       // Weekly points (sum of all rows per player_id)
-      const weeklyRows = await fetchAll<{ player_id: string; points: number }>(
+      const weeklyRows = await fetchAll<{ player_id: string; points: number; week_start_date?: string }>(
         'player_weekly_points',
-        'player_id, points'
+        'player_id, points, week_start_date'
       );
       const weeklyMap = (weeklyRows || []).reduce((acc, row) => {
         acc[row.player_id] = (acc[row.player_id] || 0) + (row.points || 0);
         return acc;
       }, {} as Record<string, number>);
 
+      // Useful points: only when selected (starting + subs)
+      const { data: weeklySelections } = await supabase
+        .from('weekly_eleven_selections')
+        .select('starting_eleven, substitutes, week_start_date')
+        .eq('user_id', userId);
+
+      const weekSelectionMap = new Map<string, Set<string>>();
+      (weeklySelections || []).forEach((sel: any) => {
+        const ids = [
+          ...(sel.starting_eleven || []).map((p: any) => p.id),
+          ...(sel.substitutes || []).map((p: any) => p.id),
+        ].filter(Boolean);
+        if (!sel.week_start_date) return;
+        weekSelectionMap.set(sel.week_start_date, new Set(ids));
+      });
+
+      const usefulTotals: Record<string, number> = {};
+      const usefulWeekly: Record<string, number> = {};
+
+      // Current week start (Tuesday)
+      const now = new Date();
+      const day = now.getDay();
+      const daysToTuesday = day === 0 ? -5 : day === 1 ? -6 : 2 - day;
+      const tuesday = new Date(now);
+      tuesday.setDate(now.getDate() + daysToTuesday);
+      tuesday.setHours(0, 0, 0, 0);
+      const currentWeekStart = tuesday.toISOString().split('T')[0];
+
+      (weeklyRows || []).forEach((row) => {
+        const wk = row.week_start_date || '';
+        const set = wk ? weekSelectionMap.get(wk) : undefined;
+        if (set && set.has(row.player_id)) {
+          usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
+          if (wk === currentWeekStart) {
+            usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
+          }
+        }
+      });
+
       if (playersData) {
         const playersWithPoints: PlayerWithPoints[] = playersData.map(player => {
           const totalPoints = getTotalPoints(player.name);
           const lastWeek = weeklyMap[player.id] || 0;
-          const costPerPoint = totalPoints > 0 ? player.value / totalPoints : undefined;
+          const totalUseful = usefulTotals[player.id] || 0;
+          const weeklyUseful = usefulWeekly[player.id] || 0;
+          const costPerPointUseful = totalUseful > 0 ? player.value / totalUseful : undefined;
           return {
             ...player,
             total_points: totalPoints,
             last_week_points: lastWeek,
-            cost_per_point: costPerPoint
+            total_points_useful: totalUseful,
+            weekly_points_useful: weeklyUseful,
+            cost_per_point_useful: costPerPointUseful
           };
         });
 
@@ -195,14 +240,16 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
     const multiplier = sortOrder === 'asc' ? 1 : -1;
     if (sortBy === 'total') {
-      return (a.total_points - b.total_points) * multiplier;
+      return (a.total_points_useful - b.total_points_useful) * multiplier;
     } else {
-      return (a.last_week_points - b.last_week_points) * multiplier;
+      return (a.weekly_points_useful - b.weekly_points_useful) * multiplier;
     }
   });
 
   const totalPoints = players.reduce((sum, p) => sum + p.total_points, 0);
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
+  const totalUseful = players.reduce((sum, p) => sum + p.total_points_useful, 0);
+  const weeklyUseful = players.reduce((sum, p) => sum + p.weekly_points_useful, 0);
   const currentRatio = formatRatio(totalPoints, initialBudget);
 
   const getPointsIcon = (points: number) => {
@@ -267,7 +314,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-4">{getTranslation('screens.myTeam', language)}</h1>
 
-          <div className="flex justify-center gap-4 mb-6">
+          <div className="flex flex-wrap justify-center gap-4 mb-6">
             {initialBudget > 0 && (
               <div className="bg-purple-500/20 backdrop-blur-md border border-purple-400/50 rounded-xl py-4 px-6">
                 <div className="text-purple-200 text-sm mb-1">Current Ratio</div>
@@ -278,9 +325,17 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
               <div className="text-cyan-200 text-sm mb-1">{getTranslation('screens.totalPoints', language)}</div>
               <div className="text-3xl font-bold text-white">{totalPoints.toFixed(1)}</div>
             </div>
+            <div className="bg-amber-500/20 backdrop-blur-md border border-amber-400/50 rounded-xl py-4 px-6">
+              <div className="text-amber-200 text-sm mb-1">PtsT úteis</div>
+              <div className="text-3xl font-bold text-white">{totalUseful.toFixed(1)}</div>
+            </div>
             <div className="bg-green-500/20 backdrop-blur-md border border-green-400/50 rounded-xl py-4 px-6">
               <div className="text-green-200 text-sm mb-1">{getTranslation('screens.weeklyPoints', language)}</div>
               <div className="text-3xl font-bold text-white">{lastWeekTotal.toFixed(1)}</div>
+            </div>
+            <div className="bg-amber-500/20 backdrop-blur-md border border-amber-400/50 rounded-xl py-4 px-6">
+              <div className="text-amber-200 text-sm mb-1">PtsS úteis</div>
+              <div className="text-3xl font-bold text-white">{weeklyUseful.toFixed(1)}</div>
             </div>
           </div>
         </div>
@@ -304,29 +359,11 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                     </div>
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-bold text-cyan-300">{getTranslation('common.team', language)}</th>
-                  <th
-                    className="px-4 py-3 text-center text-sm font-bold text-cyan-300 cursor-pointer hover:text-cyan-100 transition-colors"
-                    onClick={() => handleSort('total')}
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      {getTranslation('screens.totalPoints', language)}
-                      {sortBy === 'total' && (
-                        <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-3 text-center text-sm font-bold text-cyan-300 cursor-pointer hover:text-cyan-100 transition-colors"
-                    onClick={() => handleSort('weekly')}
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      {getTranslation('screens.weeklyPoints', language)}
-                      {sortBy === 'weekly' && (
-                        <span className="text-xs">{sortOrder === 'asc' ? '↑' : '↓'}</span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">Custo/pt</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">PtsT</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">PtsTU</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">PtsS</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">PtsSU</th>
+                  <th className="px-4 py-3 text-center text-sm font-bold text-cyan-300">Custo/pt útil</th>
                 </tr>
               </thead>
               <tbody>
@@ -349,25 +386,18 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                       <div className="text-cyan-100">{player.club}</div>
                       <div className="text-xs text-cyan-300">{player.league}</div>
                     </td>
-                    <td className="px-4 py-4 text-center">
-                      <div className="text-2xl font-bold text-white">{player.total_points.toFixed(1)}</div>
+                    <td className="px-4 py-4 text-center text-white font-bold">{player.total_points.toFixed(1)}</td>
+                    <td className="px-4 py-4 text-center text-white font-bold">{player.total_points_useful.toFixed(1)}</td>
+                    <td className="px-4 py-4 text-center text-white font-bold">
+                      {player.last_week_points > 0 ? `+${player.last_week_points.toFixed(1)}` : player.last_week_points.toFixed(1)}
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-center gap-2">
-                        {getPointsIcon(player.last_week_points)}
-                        <span className={`text-xl font-bold ${
-                          player.last_week_points > 0 ? 'text-green-400' :
-                          player.last_week_points < 0 ? 'text-red-400' :
-                          'text-gray-400'
-                        }`}>
-                          {player.last_week_points > 0 ? '+' : ''}{player.last_week_points.toFixed(1)}
-                        </span>
-                      </div>
+                    <td className="px-4 py-4 text-center text-white font-bold">
+                      {player.weekly_points_useful > 0 ? `+${player.weekly_points_useful.toFixed(1)}` : player.weekly_points_useful.toFixed(1)}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      {player.cost_per_point !== undefined && player.cost_per_point > 0 ? (
+                      {player.cost_per_point_useful !== undefined && player.cost_per_point_useful > 0 ? (
                         <div className="text-lg font-bold text-cyan-100">
-                          €{Math.round(player.cost_per_point).toLocaleString()}
+                          €{Math.round(player.cost_per_point_useful).toLocaleString()}
                         </div>
                       ) : (
                         <div className="text-sm text-cyan-300/70">—</div>
