@@ -25,3 +25,4 @@ supabase/.DS_Store
 *.sw?
 .env
 *.tar.gz
+.vercel

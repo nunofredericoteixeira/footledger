@@ -798,6 +798,19 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     return candidate;
   };
 
+  const ensureNamed = (player: Player | null): Player | null => {
+    if (!player) return player;
+    const fromMap = playersById[player.id];
+    const name =
+      (player as any).name ||
+      (player as any).player_name ||
+      fromMap?.name;
+    if (name && !POSITION_SHORT_SET.has(name.trim().toUpperCase())) {
+      return { ...player, name };
+    }
+    return { ...player, name: fromMap?.name || player.name || 'Jogador' };
+  };
+
   const handleDropOnField = (index: number) => {
     if (!draggedPlayer || !draggedFrom || validated) return;
 
@@ -806,16 +819,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     const newSubs = [...substitutes];
 
     if (draggedFrom === 'available') {
-      newStartingEleven[index] = draggedPlayer;
+      newStartingEleven[index] = ensureNamed(draggedPlayer);
       const playerIdx = newAvailable.findIndex(p => p.id === draggedPlayer.id);
       if (playerIdx !== -1) newAvailable.splice(playerIdx, 1);
     } else if (draggedFrom === 'field' && draggedIndex !== null) {
       const swapPlayer = newStartingEleven[index];
-      newStartingEleven[index] = draggedPlayer;
+      newStartingEleven[index] = ensureNamed(draggedPlayer);
       newStartingEleven[draggedIndex] = swapPlayer;
     } else if (draggedFrom === 'subs' && draggedIndex !== null) {
       const swapPlayer = newStartingEleven[index];
-      newStartingEleven[index] = draggedPlayer;
+      newStartingEleven[index] = ensureNamed(draggedPlayer);
       newSubs[draggedIndex] = swapPlayer;
     }
 
@@ -835,16 +848,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     const newStartingEleven = [...startingEleven];
 
     if (draggedFrom === 'available') {
-      newSubs[index] = draggedPlayer;
+      newSubs[index] = ensureNamed(draggedPlayer);
       const playerIdx = newAvailable.findIndex(p => p.id === draggedPlayer.id);
       if (playerIdx !== -1) newAvailable.splice(playerIdx, 1);
     } else if (draggedFrom === 'field' && draggedIndex !== null) {
       const swapPlayer = newSubs[index];
-      newSubs[index] = draggedPlayer;
+      newSubs[index] = ensureNamed(draggedPlayer);
       newStartingEleven[draggedIndex] = swapPlayer;
     } else if (draggedFrom === 'subs' && draggedIndex !== null) {
       const swapPlayer = newSubs[index];
-      newSubs[index] = draggedPlayer;
+      newSubs[index] = ensureNamed(draggedPlayer);
       newSubs[draggedIndex] = swapPlayer;
     }
 
@@ -897,7 +910,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     if (selectedFieldPosition !== null) {
       const newStartingEleven = [...startingEleven];
       const newAvailable = availablePlayers.filter(p => p.id !== player.id);
-      newStartingEleven[selectedFieldPosition] = player;
+      newStartingEleven[selectedFieldPosition] = ensureNamed(player);
 
       setStartingEleven(newStartingEleven);
       setAvailablePlayers(newAvailable);
@@ -905,7 +918,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     } else if (selectedSubPosition !== null) {
       const newSubs = [...substitutes];
       const newAvailable = availablePlayers.filter(p => p.id !== player.id);
-      newSubs[selectedSubPosition] = player;
+      newSubs[selectedSubPosition] = ensureNamed(player);
 
       setSubstitutes(newSubs);
       setAvailablePlayers(newAvailable);
@@ -944,7 +957,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     if (emptyPositionIndex !== -1) {
       const newStartingEleven = [...startingEleven];
       const newAvailable = availablePlayers.filter(p => p.id !== player.id);
-      newStartingEleven[emptyPositionIndex] = player;
+      newStartingEleven[emptyPositionIndex] = ensureNamed(player);
 
       setStartingEleven(newStartingEleven);
       setAvailablePlayers(newAvailable);
