@@ -314,6 +314,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, Player>>({});
+  const [rosterIds, setRosterIds] = useState<Set<string>>(new Set());
   const [draggedPlayer, setDraggedPlayer] = useState<Player | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<'available' | 'field' | 'subs' | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -582,6 +583,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             const name = resolveName(pid, p);
             return { ...base, ...p, id: pid, name };
           });
+        setRosterIds(new Set(rosterPlayers.map(p => p.id)));
 
         rosterWithPoints = rosterPlayers.map(player => {
           const totalPts = getTotalPoints(player.name);
@@ -598,7 +600,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           };
         });
 
-        setAvailablePlayers(rosterWithPoints);
+        setAvailablePlayers(dedupRostered(rosterWithPoints));
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
           total_points: getTotalPoints(p.name),
@@ -623,7 +625,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
-        setAvailablePlayers(allEnriched);
+        setAvailablePlayers(dedupRostered(allEnriched));
+        setRosterIds(new Set(allEnriched.map(p => p.id)));
         rosterWithPoints = allEnriched;
       }
 
@@ -718,7 +721,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
         ];
         const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
-        setAvailablePlayers(available);
+        setAvailablePlayers(dedupRostered(available));
       } else {
         // No selection for this week; try to prefill with the most recent saved eleven
         const { data: lastSelections, error: lastError } = await supabase
@@ -767,7 +770,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
           ];
           const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
-          setAvailablePlayers(available);
+          setAvailablePlayers(dedupRostered(available));
         }
       }
     } catch (error) {
@@ -848,6 +851,18 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     return { ...player, id: pid || player.id, name: fromMap?.name || player.name || 'Jogador' };
   };
 
+  const dedupRostered = (list: Player[]) => {
+    const uniq = new Map<string, Player>();
+    list.forEach(p => {
+      if (!p) return;
+      const pid = (p as any).id || (p as any).player_id;
+      if (!pid) return;
+      if (rosterIds.size > 0 && !rosterIds.has(pid)) return;
+      if (!uniq.has(pid)) uniq.set(pid, ensureNamed({ ...p, id: pid } as Player)!);
+    });
+    return Array.from(uniq.values());
+  };
+
   const handleDropOnField = (index: number) => {
     if (!draggedPlayer || !draggedFrom || validated) return;
 
@@ -870,7 +885,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     }
 
     setStartingEleven(newStartingEleven);
-    setAvailablePlayers(newAvailable);
+    setAvailablePlayers(dedupRostered(newAvailable));
     setSubstitutes(newSubs);
     setDraggedPlayer(null);
     setDraggedFrom(null);
@@ -899,7 +914,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     }
 
     setSubstitutes(newSubs);
-    setAvailablePlayers(newAvailable);
+    setAvailablePlayers(dedupRostered(newAvailable));
     setStartingEleven(newStartingEleven);
     setDraggedPlayer(null);
     setDraggedFrom(null);
@@ -919,7 +934,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       newSubs[draggedIndex] = null;
     }
 
-    setAvailablePlayers(newAvailable);
+    setAvailablePlayers(dedupRostered(newAvailable));
     setStartingEleven(newStartingEleven);
     setSubstitutes(newSubs);
     setDraggedPlayer(null);
@@ -1007,11 +1022,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     if (!player) return;
 
     const newStartingEleven = [...startingEleven];
-    const newAvailable = [...availablePlayers, player];
+    const newAvailable = [...availablePlayers];
+    // só devolve ao available se estiver no roster
+    const pid = (player as any).id || (player as any).player_id;
+    if (!rosterIds.size || (pid && rosterIds.has(pid))) {
+      newAvailable.push(player);
+    }
     newStartingEleven[index] = null;
 
     setStartingEleven(newStartingEleven);
-    setAvailablePlayers(newAvailable);
+    setAvailablePlayers(dedupRostered(newAvailable));
   };
 
   const handleSubPlayerDoubleClick = (index: number) => {
@@ -1020,11 +1040,15 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     if (!player) return;
 
     const newSubs = [...substitutes];
-    const newAvailable = [...availablePlayers, player];
+    const newAvailable = [...availablePlayers];
+    const pid = (player as any).id || (player as any).player_id;
+    if (!rosterIds.size || (pid && rosterIds.has(pid))) {
+      newAvailable.push(player);
+    }
     newSubs[index] = null;
 
     setSubstitutes(newSubs);
-    setAvailablePlayers(newAvailable);
+    setAvailablePlayers(dedupRostered(newAvailable));
   };
 
   const isElevenComplete = startingEleven.every(p => p !== null) && substitutes.every(p => p !== null);
