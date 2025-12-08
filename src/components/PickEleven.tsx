@@ -600,7 +600,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           };
         });
 
-        setAvailablePlayers(dedupRostered(rosterWithPoints));
+        setAvailablePlayers(clampAvailable(rosterWithPoints));
         const allEnriched = (poolAll || []).map(p => ({
           ...p,
           total_points: getTotalPoints(p.name),
@@ -625,7 +625,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           isRoster: false,
         }));
         setAllPlayers(allEnriched);
-        setAvailablePlayers(dedupRostered(allEnriched));
+        setAvailablePlayers(clampAvailable(allEnriched));
         setRosterIds(new Set(allEnriched.map(p => p.id)));
         rosterWithPoints = allEnriched;
       }
@@ -721,7 +721,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
         ];
         const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
-        setAvailablePlayers(dedupRostered(available));
+        setAvailablePlayers(clampAvailable(available));
       } else {
         // No selection for this week; try to prefill with the most recent saved eleven
         const { data: lastSelections, error: lastError } = await supabase
@@ -770,7 +770,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
           ];
           const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
-          setAvailablePlayers(dedupRostered(available));
+          setAvailablePlayers(clampAvailable(available));
         }
       }
     } catch (error) {
@@ -863,6 +863,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     return Array.from(uniq.values());
   };
 
+  const clampAvailable = (list: Player[]) => {
+    const deduped = dedupRostered(list);
+    const limit = rosterIds.size > 0 ? rosterIds.size : deduped.length;
+    return deduped.slice(0, limit);
+  };
+
   const handleDropOnField = (index: number) => {
     if (!draggedPlayer || !draggedFrom || validated) return;
 
@@ -885,7 +891,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     }
 
     setStartingEleven(newStartingEleven);
-    setAvailablePlayers(dedupRostered(newAvailable));
+    setAvailablePlayers(clampAvailable(newAvailable));
     setSubstitutes(newSubs);
     setDraggedPlayer(null);
     setDraggedFrom(null);
@@ -914,7 +920,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     }
 
     setSubstitutes(newSubs);
-    setAvailablePlayers(dedupRostered(newAvailable));
+    setAvailablePlayers(clampAvailable(newAvailable));
     setStartingEleven(newStartingEleven);
     setDraggedPlayer(null);
     setDraggedFrom(null);
@@ -934,7 +940,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       newSubs[draggedIndex] = null;
     }
 
-    setAvailablePlayers(dedupRostered(newAvailable));
+    setAvailablePlayers(clampAvailable(newAvailable));
     setStartingEleven(newStartingEleven);
     setSubstitutes(newSubs);
     setDraggedPlayer(null);
@@ -1048,7 +1054,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     newSubs[index] = null;
 
     setSubstitutes(newSubs);
-    setAvailablePlayers(dedupRostered(newAvailable));
+    setAvailablePlayers(clampAvailable(newAvailable));
   };
 
   const isElevenComplete = startingEleven.every(p => p !== null) && substitutes.every(p => p !== null);
