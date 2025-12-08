@@ -372,7 +372,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
       const pick = candidates.find(c => !onlyRoster || c.isRoster);
       if (pick) {
-        bestXI[idx] = pick;
+        bestXI[idx] = ensureNamed(pick);
         usedIds.add(pick.id);
       }
     });
@@ -398,8 +398,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     }
     while (subs.length < 5) subs.push(null);
 
-    setStartingEleven(bestXI);
-    setSubstitutes(subs);
+    setStartingEleven(bestXI.map(ensureNamed));
+    setSubstitutes(subs.map(ensureNamed));
     setValidated(false);
   };
 
@@ -690,8 +690,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           setFieldPositions(savedPositions);
         }
 
-        setStartingEleven(startingElevenData);
-        setSubstitutes(substitutesData);
+        setStartingEleven(startingElevenData.map(ensureNamed));
+        setSubstitutes(substitutesData.map(ensureNamed));
         // Mantemos edição livre mesmo que já exista seleção
         setValidated(false);
 
@@ -724,8 +724,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             setFieldPositions(savedPositions);
           }
 
-          setStartingEleven(startingElevenData);
-          setSubstitutes(substitutesData);
+          setStartingEleven(startingElevenData.map(ensureNamed));
+          setSubstitutes(substitutesData.map(ensureNamed));
 
           const usedPlayerIds = [
             ...startingElevenData.map((p: Player) => p.id),
