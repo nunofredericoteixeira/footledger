@@ -48,6 +48,8 @@ const POSITION_SHORT_MAP: Record<string, string> = {
   'Striker': 'ST',
 };
 
+const POSITION_SHORT_SET = new Set(Object.values(POSITION_SHORT_MAP));
+
 const isCompatible = (playerPos: string, fieldLabel: string) => {
   const p = POSITION_SHORT_MAP[playerPos] || playerPos;
   const f = fieldLabel;
@@ -311,6 +313,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   const [substitutes, setSubstitutes] = useState<(Player | null)[]>([null, null, null, null, null]);
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [playersById, setPlayersById] = useState<Record<string, Player>>({});
   const [draggedPlayer, setDraggedPlayer] = useState<Player | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<'available' | 'field' | 'subs' | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -335,6 +338,11 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
     return () => clearInterval(interval);
   }, [userId]);
+
+  // Forçar sempre editável
+  useEffect(() => {
+    setValidated(false);
+  }, []);
 
   const checkSelectionPeriod = () => {
     // Temporarily keep selection open regardless of day/hour
@@ -495,7 +503,19 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         'id, name, league, club, position, value'
       );
       const playerMap = new Map(poolAll.map((p) => [p.id, p]));
-      const playerMap = new Map(poolAll.map((p) => [p.id, p]));
+      setPlayersById(Object.fromEntries(poolAll.map((p) => [p.id, p])));
+
+      const resolveName = (pid: string, p: any) => {
+        const base = playerMap.get(pid);
+        const candidate =
+          (p as any)?.name ||
+          (p as any)?.player_name ||
+          base?.name;
+        if (!candidate || POSITION_SHORT_SET.has(candidate.trim().toUpperCase())) {
+          return base?.name || '';
+        }
+        return candidate;
+      };
 
       // Points (total season) and weekly points
       const perf = await fetchAll<{ player_name: string; performance_score: number }>(
@@ -555,7 +575,13 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       if (selections) {
         const rosterPlayers = selections
           .map(s => s.player_pool)
-          .filter((p): p is Player => p !== null);
+          .filter((p): p is Player => p !== null)
+          .map(p => {
+            const pid = (p as any).player_id || p.id;
+            const base = playerMap.get(pid) || {};
+            const name = resolveName(pid, p);
+            return { ...base, ...p, id: pid, name };
+          });
 
         rosterWithPoints = rosterPlayers.map(player => {
           const totalPts = getTotalPoints(player.name);
@@ -636,17 +662,20 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .maybeSingle();
 
       const enrichSelection = (list: Player[] | null | undefined) => (list || []).map((p) => {
-        const base = { ...p, ...(playerMap.get(p.id) || {}) };
-        const totalPts = getTotalPoints(base.name);
-        const totalUseful = usefulTotals[p.id] || 0;
+        const pid = (p as any).player_id || p.id;
+        const base = playerMap.get(pid) || {};
+        const name = resolveName(pid, p);
+        const merged = { ...base, ...p, id: pid, name };
+        const totalPts = getTotalPoints(merged.name);
+        const totalUseful = usefulTotals[pid] || 0;
         return {
-          ...base,
+          ...merged,
           total_points: totalPts ?? p.total_points ?? 0,
-          weekly_points: weeklyMap[p.id] || p.weekly_points || 0,
+          weekly_points: weeklyMap[pid] || p.weekly_points || 0,
           total_points_useful: totalUseful,
-          weekly_points_useful: usefulWeekly[p.id] || p.weekly_points_useful || 0,
-          cost_per_point_useful: totalUseful > 0 ? base.value / totalUseful : undefined,
-          isRoster: selections?.some(s => s.player_pool?.id === p.id) ?? false,
+          weekly_points_useful: usefulWeekly[pid] || p.weekly_points_useful || 0,
+          cost_per_point_useful: totalUseful > 0 ? merged.value / totalUseful : undefined,
+          isRoster: selections?.some(s => s.player_pool?.id === pid) ?? false,
         };
       });
 
@@ -663,7 +692,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
         setStartingEleven(startingElevenData);
         setSubstitutes(substitutesData);
-        setValidated(true);
+        // Mantemos edição livre mesmo que já exista seleção
+        setValidated(false);
 
         const usedPlayerIds = [
           ...startingElevenData.map((p: Player) => p.id),
@@ -717,7 +747,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleTacticChange = (newTactic: string) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
 
     setTacticName(newTactic);
     const positions = FORMATION_LAYOUTS[newTactic] || FORMATION_LAYOUTS['1-4-3-3 Line'];
@@ -745,7 +775,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleDragStart = (player: Player, from: 'available' | 'field' | 'subs', index?: number) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
     setDraggedPlayer(player);
     setDraggedFrom(from);
     setDraggedIndex(index ?? null);
@@ -755,8 +785,21 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     e.preventDefault();
   };
 
+  const getDisplayName = (player?: Player | null) => {
+    if (!player) return 'Jogador';
+    const fromMap = player.id ? playersById[player.id] : undefined;
+    const candidate =
+      (player as any).name ||
+      (player as any).player_name ||
+      fromMap?.name;
+    if (!candidate || POSITION_SHORT_SET.has(candidate.trim().toUpperCase())) {
+      return fromMap?.name || 'Jogador';
+    }
+    return candidate;
+  };
+
   const handleDropOnField = (index: number) => {
-    if (!draggedPlayer || !draggedFrom || validated || !isSelectionOpen) return;
+    if (!draggedPlayer || !draggedFrom || validated) return;
 
     const newStartingEleven = [...startingEleven];
     const newAvailable = [...availablePlayers];
@@ -785,7 +828,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleDropOnSubs = (index: number) => {
-    if (!draggedPlayer || !draggedFrom || validated || !isSelectionOpen) return;
+    if (!draggedPlayer || !draggedFrom || validated) return;
 
     const newSubs = [...substitutes];
     const newAvailable = [...availablePlayers];
@@ -814,7 +857,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleDropOnAvailable = () => {
-    if (!draggedPlayer || !draggedFrom || validated || !isSelectionOpen) return;
+    if (!draggedPlayer || !draggedFrom || validated) return;
 
     const newAvailable = [...availablePlayers, draggedPlayer];
     const newStartingEleven = [...startingEleven];
@@ -835,21 +878,21 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleFieldPositionClick = (index: number) => {
-    if (startingEleven[index] || validated || !isSelectionOpen) return;
+    if (startingEleven[index] || validated) return;
 
     setSelectedFieldPosition(index);
     setSelectedSubPosition(null);
   };
 
   const handleSubPositionClick = (index: number) => {
-    if (substitutes[index] || validated || !isSelectionOpen) return;
+    if (substitutes[index] || validated) return;
 
     setSelectedSubPosition(index);
     setSelectedFieldPosition(null);
   };
 
   const handleAvailablePlayerClick = (player: Player) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
 
     if (selectedFieldPosition !== null) {
       const newStartingEleven = [...startingEleven];
@@ -871,7 +914,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleAvailablePlayerDoubleClick = (player: Player) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
 
     const playerShortPosition = POSITION_SHORT_MAP[player.position];
 
@@ -909,7 +952,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleFieldPlayerDoubleClick = (index: number) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
     const player = startingEleven[index];
     if (!player) return;
 
@@ -922,7 +965,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleSubPlayerDoubleClick = (index: number) => {
-    if (validated || !isSelectionOpen) return;
+    if (validated) return;
     const player = substitutes[index];
     if (!player) return;
 
@@ -942,10 +985,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       return;
     }
 
-    if (!isSelectionOpen) {
-      alert(closingMessage);
-      return;
-    }
+    // Seleção permanece sempre aberta (removido bloqueio)
 
     setSaving(true);
 
@@ -976,8 +1016,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         user_id: userId,
         week_start_date: weekStartDate,
         week_end_date: weekEndDate,
-        starting_eleven: startingEleven,
-        substitutes: substitutes,
+        starting_eleven: startingEleven.map(p => p ? { ...p, name: getDisplayName(p) } : null),
+        substitutes: substitutes.map(p => p ? { ...p, name: getDisplayName(p) } : null),
         tactic_name: tacticName,
         updated_at: new Date().toISOString()
       };
@@ -999,7 +1039,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         alert('Your Eleven of the Week has been saved successfully!');
       }
 
-      setValidated(true);
+      setValidated(false);
     } catch (error) {
       console.error('Error saving weekly eleven:', error);
       alert('Failed to save your Eleven of the Week. Please try again.');
@@ -1009,8 +1049,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   };
 
   const handleComplete = async () => {
-    if (!validated && isElevenComplete) {
-      alert('Please validate and save your Eleven of the Week before continuing.');
+    if (!isElevenComplete) {
+      alert('Please complete your starting eleven and substitutes before continuing.');
       return;
     }
     onComplete();
@@ -1070,7 +1110,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           </div>
 
 
-          {isSelectionOpen && !validated && (
+          {!validated && (
             <div className="bg-yellow-500/20 backdrop-blur-md border-2 border-yellow-400/50 rounded-lg py-3 px-6 inline-block mb-3">
               <div className="flex items-center gap-3">
                 <Clock className="w-6 h-6 text-yellow-300 animate-pulse" />
@@ -1082,18 +1122,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             </div>
           )}
 
-          {validated && (
-            <div className="bg-green-500/20 backdrop-blur-md border border-green-400/50 rounded-lg py-2 px-4 inline-block mb-3">
-              <p className="text-green-200 font-semibold">✓ Your eleven is locked for this week</p>
-            </div>
-          )}
-
           <div className="flex items-center justify-center gap-3 mb-4">
             <label className="text-cyan-300 font-semibold">Tactic:</label>
             <select
               value={tacticName}
               onChange={(e) => handleTacticChange(e.target.value)}
-              disabled={validated || !isSelectionOpen}
+              disabled={false}
               className="bg-cyan-900/80 border border-cyan-400/50 text-white rounded-lg px-4 py-2 font-semibold focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {availableTactics.map(tactic => (
@@ -1102,7 +1136,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             </select>
           </div>
 
-          <p className="text-cyan-200">{validated ? 'Your locked eleven' : 'Drag and drop players onto the field'}</p>
+          <p className="text-cyan-200">{validated ? 'Eleven saved (podes editar sempre)' : 'Drag and drop players onto the field'}</p>
 
           {!validated && (
             <div className="flex flex-wrap justify-center gap-3 mt-4">
@@ -1130,7 +1164,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             </div>
           )}
 
-          {isElevenComplete && !validated && isSelectionOpen && (
+          {isElevenComplete && !validated && (
             <div className="mt-4">
               <button
                 onClick={handleSaveWeeklyEleven}
@@ -1193,20 +1227,20 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
               >
                 {startingEleven[index] ? (
                   <div
-                    draggable={!validated && isSelectionOpen}
+                    draggable={!validated}
                     onDragStart={() => handleDragStart(startingEleven[index]!, 'field', index)}
                     onDoubleClick={() => handleFieldPlayerDoubleClick(index)}
                     className={`bg-gradient-to-b from-cyan-500 to-cyan-600 border-2 border-cyan-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center w-full ${
-                      validated || !isSelectionOpen ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-cyan-500/50'
-                    }`}
-                  >
-                    <div className="text-[10px] font-bold text-white truncate">
-                      {startingEleven[index]?.name || 'Jogador'}
-                    </div>
-                    <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
-                    {startingEleven[index]!.total_points !== undefined && (
-                      <div className="text-[8px] text-white/90">
-                        {startingEleven[index]!.total_points!.toFixed(2)} pts
+                    validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-cyan-500/50'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold text-white truncate">
+                    {getDisplayName(startingEleven[index])}
+                  </div>
+                  <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
+                  {startingEleven[index]!.total_points !== undefined && (
+                    <div className="text-[8px] text-white/90">
+                      {startingEleven[index]!.total_points!.toFixed(2)} pts
                       </div>
                     )}
                     {startingEleven[index]!.weekly_points !== undefined && (
@@ -1246,14 +1280,14 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                   >
                     {sub ? (
                       <div
-                        draggable={!validated && isSelectionOpen}
+                        draggable={!validated}
                         onDragStart={() => handleDragStart(sub, 'subs', index)}
                         onDoubleClick={() => handleSubPlayerDoubleClick(index)}
-                        className={`bg-gradient-to-b from-yellow-400 to-yellow-500 border-2 border-yellow-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center ${
-                          validated || !isSelectionOpen ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
-                        }`}
-                      >
-                        <div className="text-[10px] font-bold text-gray-900 truncate">{sub.name || 'Jogador'}</div>
+                      className={`bg-gradient-to-b from-yellow-400 to-yellow-500 border-2 border-yellow-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center ${
+                        validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
+                      }`}
+                    >
+                        <div className="text-[10px] font-bold text-gray-900 truncate">{getDisplayName(sub)}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
                         {sub.total_points !== undefined && (
                           <div className="text-[8px] text-gray-800 font-semibold">
@@ -1300,12 +1334,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                 {availablePlayers.filter(p => p.position === 'Goalkeeper').map((player) => (
                   <div
                     key={player.id}
-                    draggable={!validated && isSelectionOpen}
+                    draggable={!validated}
                     onDragStart={() => handleDragStart(player, 'available')}
                     onClick={() => handleAvailablePlayerClick(player)}
                     onDoubleClick={() => handleAvailablePlayerDoubleClick(player)}
                     className={`bg-gradient-to-b from-blue-500 to-blue-600 border-2 border-blue-400 rounded-lg p-1.5 transition-all shadow-md ${
-                      validated || !isSelectionOpen ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
+                      validated ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-0.5">
@@ -1336,12 +1370,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                 {availablePlayers.filter(p => ['Centre-Back', 'Left-Back', 'Right-Back'].includes(p.position)).map((player) => (
                   <div
                     key={player.id}
-                    draggable={!validated && isSelectionOpen}
+                    draggable={!validated}
                     onDragStart={() => handleDragStart(player, 'available')}
                     onClick={() => handleAvailablePlayerClick(player)}
                     onDoubleClick={() => handleAvailablePlayerDoubleClick(player)}
                     className={`bg-gradient-to-b from-blue-500 to-blue-600 border-2 border-blue-400 rounded-lg p-1.5 transition-all shadow-md ${
-                      validated || !isSelectionOpen ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
+                      validated ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
                     }`}
                   >
                       <div className="flex justify-between items-start mb-0.5">
@@ -1372,12 +1406,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                 {availablePlayers.filter(p => ['Defensive Midfield', 'Central Midfield', 'Attacking Midfield', 'Left Midfield', 'Right Midfield'].includes(p.position)).map((player) => (
                   <div
                     key={player.id}
-                    draggable={!validated && isSelectionOpen}
+                    draggable={!validated}
                     onDragStart={() => handleDragStart(player, 'available')}
                     onDoubleClick={() => handleAvailablePlayerDoubleClick(player)}
                     onClick={() => handleAvailablePlayerClick(player)}
                     className={`bg-gradient-to-b from-blue-500 to-blue-600 border-2 border-blue-400 rounded-lg p-1.5 transition-all shadow-md ${
-                      validated || !isSelectionOpen ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
+                      validated ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-0.5">
@@ -1408,12 +1442,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                 {availablePlayers.filter(p => ['Left Winger', 'Right Winger', 'Centre-Forward', 'Striker'].includes(p.position)).map((player) => (
                   <div
                     key={player.id}
-                    draggable={!validated && isSelectionOpen}
+                    draggable={!validated}
                     onDragStart={() => handleDragStart(player, 'available')}
                     onClick={() => handleAvailablePlayerClick(player)}
                     onDoubleClick={() => handleAvailablePlayerDoubleClick(player)}
                     className={`bg-gradient-to-b from-blue-500 to-blue-600 border-2 border-blue-400 rounded-lg p-1.5 transition-all shadow-md ${
-                      validated || !isSelectionOpen ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
+                      validated ? 'cursor-not-allowed opacity-70' : 'cursor-move hover:shadow-blue-500/50'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-0.5">
