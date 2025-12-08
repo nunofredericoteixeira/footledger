@@ -787,7 +787,8 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
   const getDisplayName = (player?: Player | null) => {
     if (!player) return 'Jogador';
-    const fromMap = player.id ? playersById[player.id] : undefined;
+    const pid = (player as any).id || (player as any).player_id;
+    const fromMap = pid ? playersById[pid] : undefined;
     const candidate =
       (player as any).name ||
       (player as any).player_name ||
@@ -800,15 +801,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
 
   const ensureNamed = (player: Player | null): Player | null => {
     if (!player) return player;
-    const fromMap = playersById[player.id];
+    const pid = (player as any).id || (player as any).player_id;
+    const fromMap = pid ? playersById[pid] : undefined;
     const name =
       (player as any).name ||
       (player as any).player_name ||
       fromMap?.name;
     if (name && !POSITION_SHORT_SET.has(name.trim().toUpperCase())) {
-      return { ...player, name };
+      return { ...player, id: pid || player.id, name };
     }
-    return { ...player, name: fromMap?.name || player.name || 'Jogador' };
+    return { ...player, id: pid || player.id, name: fromMap?.name || player.name || 'Jogador' };
   };
 
   const handleDropOnField = (index: number) => {
