@@ -682,6 +682,24 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       if (existingSelection) {
         const startingElevenData = enrichSelection(existingSelection.starting_eleven as Player[]);
         const substitutesData = enrichSelection(existingSelection.substitutes as Player[]);
+        const fixedStarting = startingElevenData.map(ensureNamed);
+        const fixedSubs = substitutesData.map(ensureNamed);
+
+        // Se alguma entrada estiver sem nome, corrige na base
+        const needsFix =
+          fixedStarting.some(p => p && (!p.name || POSITION_SHORT_SET.has(p.name.trim().toUpperCase()))) ||
+          fixedSubs.some(p => p && (!p.name || POSITION_SHORT_SET.has(p.name.trim().toUpperCase())));
+        if (needsFix) {
+          await supabase
+            .from('weekly_eleven_selections')
+            .update({
+              starting_eleven: fixedStarting,
+              substitutes: fixedSubs,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingSelection.id);
+        }
+
         const savedTactic = existingSelection.tactic_name || tacticToUse;
 
         if (savedTactic !== tacticToUse) {
@@ -690,14 +708,14 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           setFieldPositions(savedPositions);
         }
 
-        setStartingEleven(startingElevenData.map(ensureNamed));
-        setSubstitutes(substitutesData.map(ensureNamed));
+        setStartingEleven(fixedStarting);
+        setSubstitutes(fixedSubs);
         // Mantemos edição livre mesmo que já exista seleção
         setValidated(false);
 
         const usedPlayerIds = [
-          ...startingElevenData.map((p: Player) => p.id),
-          ...substitutesData.map((p: Player) => p.id)
+          ...fixedStarting.map((p: Player | null) => p?.id).filter(Boolean) as string[],
+          ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
         ];
         const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
         setAvailablePlayers(available);
@@ -716,6 +734,23 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         if (lastSelection) {
           const startingElevenData = enrichSelection(lastSelection.starting_eleven as Player[]);
           const substitutesData = enrichSelection(lastSelection.substitutes as Player[]);
+          const fixedStarting = startingElevenData.map(ensureNamed);
+          const fixedSubs = substitutesData.map(ensureNamed);
+
+          const needsFix =
+            fixedStarting.some(p => p && (!p.name || POSITION_SHORT_SET.has(p.name.trim().toUpperCase()))) ||
+            fixedSubs.some(p => p && (!p.name || POSITION_SHORT_SET.has(p.name.trim().toUpperCase())));
+          if (needsFix) {
+            await supabase
+              .from('weekly_eleven_selections')
+              .update({
+                starting_eleven: fixedStarting,
+                substitutes: fixedSubs,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', lastSelection.id);
+          }
+
           const savedTactic = lastSelection.tactic_name || tacticToUse;
 
           if (savedTactic !== tacticToUse) {
@@ -724,12 +759,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             setFieldPositions(savedPositions);
           }
 
-          setStartingEleven(startingElevenData.map(ensureNamed));
-          setSubstitutes(substitutesData.map(ensureNamed));
+          setStartingEleven(fixedStarting);
+          setSubstitutes(fixedSubs);
 
           const usedPlayerIds = [
-            ...startingElevenData.map((p: Player) => p.id),
-            ...substitutesData.map((p: Player) => p.id)
+            ...fixedStarting.map((p: Player | null) => p?.id).filter(Boolean) as string[],
+            ...fixedSubs.map((p: Player | null) => p?.id).filter(Boolean) as string[]
           ];
           const available = rosterWithPoints.filter(p => !usedPlayerIds.includes(p.id));
           setAvailablePlayers(available);
