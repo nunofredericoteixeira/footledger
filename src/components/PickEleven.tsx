@@ -892,7 +892,19 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     e.preventDefault();
   };
 
-  const getDisplayName = (player?: Player | null) => resolveDisplayName(player);
+  const getDisplayName = (player?: Player | null) => {
+    if (!player) return 'Jogador';
+    const pid = ((player as any).id || (player as any).player_id || '').toString();
+    const fromMap = pid ? (playersById[pid] || playerMapRef.current[pid]) : undefined;
+    const firstValid = [
+      (player as any).name,
+      (player as any).player_name,
+      (player as any).full_name,
+      fromMap?.name,
+      pid
+    ].find(v => v && !POSITION_SHORT_SET.has(String(v).trim().toUpperCase()));
+    return (firstValid || 'Jogador').toString();
+  };
 
   const ensureNamed = (player: Player | null): Player | null => {
     if (!player) return player;
@@ -1369,11 +1381,11 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     onDragStart={() => handleDragStart(startingEleven[index]!, 'field', index)}
                     onDoubleClick={() => handleFieldPlayerDoubleClick(index)}
                     data-xi-card="starting"
-                    className={`bg-gradient-to-b from-cyan-500 to-cyan-600 border-2 border-cyan-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center w-full ${
+                    className={`bg-gradient-to-b from-cyan-500 to-cyan-600 border-2 border-cyan-300 rounded-lg p-2 text-center shadow-lg transition-all h-16 flex flex-col justify-center w-full ${
                     validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-cyan-500/50'
                   }`}
                 >
-                  <div className="text-[10px] font-bold text-white truncate">
+                  <div className="text-[11px] font-bold text-white drop-shadow-sm truncate">
                     {getDisplayName(startingEleven[index])}
                   </div>
                   <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
@@ -1423,11 +1435,11 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                         onDragStart={() => handleDragStart(sub, 'subs', index)}
                         onDoubleClick={() => handleSubPlayerDoubleClick(index)}
                         data-xi-card="sub"
-                      className={`bg-gradient-to-b from-yellow-400 to-yellow-500 border-2 border-yellow-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center ${
+                      className={`bg-gradient-to-b from-yellow-400 to-yellow-500 border-2 border-yellow-300 rounded-lg p-2 text-center shadow-lg transition-all h-16 flex flex-col justify-center ${
                         validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
                       }`}
                     >
-                        <div className="text-[10px] font-bold text-gray-900 truncate">{getDisplayName(sub)}</div>
+                        <div className="text-[11px] font-bold text-gray-900 truncate">{getDisplayName(sub)}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
                         {sub.total_points !== undefined && (
                           <div className="text-[8px] text-gray-800 font-semibold">
