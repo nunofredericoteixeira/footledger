@@ -386,6 +386,16 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     (window as any).__playersById = playersById ?? {};
   }
 
+  // Versões normalizadas apenas para apresentação (mantém o estado original para lógicas).
+  const displayStartingEleven = useMemo(
+    () => startingEleven.map(p => ensureNamed(p)),
+    [startingEleven, playersById]
+  );
+  const displaySubstitutes = useMemo(
+    () => substitutes.map(p => ensureNamed(p)),
+    [substitutes, playersById]
+  );
+
   const checkSelectionPeriod = () => {
     // Temporarily keep selection open regardless of day/hour
     setIsSelectionOpen(true);
@@ -1375,10 +1385,10 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                 }}
                 className="w-[110px]"
               >
-                {startingEleven[index] ? (
+                {displayStartingEleven[index] ? (
                   <div
                     draggable={!validated}
-                    onDragStart={() => handleDragStart(startingEleven[index]!, 'field', index)}
+                    onDragStart={() => handleDragStart(displayStartingEleven[index]!, 'field', index)}
                     onDoubleClick={() => handleFieldPlayerDoubleClick(index)}
                     data-xi-card="starting"
                     className={`bg-gradient-to-b from-cyan-500 to-cyan-600 border-2 border-cyan-300 rounded-lg p-2 text-center shadow-lg transition-all h-16 flex flex-col justify-center w-full ${
@@ -1386,17 +1396,17 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                   }`}
                 >
                   <div className="text-[11px] font-bold text-white drop-shadow-sm truncate">
-                    {getDisplayName(startingEleven[index])}
+                    {getDisplayName(displayStartingEleven[index]) || POSITION_SHORT_MAP[displayStartingEleven[index]!.position] || 'Jogador'}
                   </div>
-                  <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[startingEleven[index]!.position]}</div>
-                  {startingEleven[index]!.total_points !== undefined && (
+                  <div className="text-[8px] text-cyan-100">{POSITION_SHORT_MAP[displayStartingEleven[index]!.position]}</div>
+                  {displayStartingEleven[index]!.total_points !== undefined && (
                     <div className="text-[8px] text-white/90">
-                      {startingEleven[index]!.total_points!.toFixed(2)} pts
+                      {displayStartingEleven[index]!.total_points!.toFixed(2)} pts
                       </div>
                     )}
-                    {startingEleven[index]!.weekly_points !== undefined && (
+                    {displayStartingEleven[index]!.weekly_points !== undefined && (
                       <div className="text-[8px] text-yellow-200">
-                        Semana: {startingEleven[index]!.weekly_points!.toFixed(2)}
+                        Semana: {displayStartingEleven[index]!.weekly_points!.toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -1422,7 +1432,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           <div className="bg-black/60 backdrop-blur-md border-2 border-cyan-400 rounded-xl p-4 max-w-2xl mx-auto">
               <h3 className="text-lg font-bold text-white mb-3 text-center">Substitutes</h3>
               <div className="flex gap-3 justify-center">
-                {substitutes.map((sub, index) => (
+                {displaySubstitutes.map((sub, index) => (
                   <div
                     key={index}
                     onDragOver={handleDragOver}
@@ -1439,7 +1449,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                         validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
                       }`}
                     >
-                        <div className="text-[11px] font-bold text-gray-900 truncate">{getDisplayName(sub)}</div>
+                        <div className="text-[11px] font-bold text-gray-900 truncate">{getDisplayName(sub) || POSITION_SHORT_MAP[sub.position] || 'Jogador'}</div>
                         <div className="text-[8px] text-gray-700">{POSITION_SHORT_MAP[sub.position]}</div>
                         {sub.total_points !== undefined && (
                           <div className="text-[8px] text-gray-800 font-semibold">
