@@ -314,6 +314,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [playersById, setPlayersById] = useState<Record<string, Player>>({});
+  const playerMapRef = useRef<Record<string, Player>>({});
   const [rosterIds, setRosterIds] = useState<Set<string>>(new Set());
   const [draggedPlayer, setDraggedPlayer] = useState<Player | null>(null);
   const [draggedFrom, setDraggedFrom] = useState<'available' | 'field' | 'subs' | null>(null);
@@ -327,6 +328,28 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   const [isSelectionOpen, setIsSelectionOpen] = useState(true);
   const [closingMessage, setClosingMessage] = useState('');
   const [autoSelecting, setAutoSelecting] = useState(false);
+  const [rosterMessage, setRosterMessage] = useState<string | null>(null);
+
+  const resolveDisplayName = (player: Player | null | undefined): string => {
+    if (!player) return 'Jogador';
+    const pid = ((player as any).id || (player as any).player_id || '').toString();
+    const base = pid ? (playersById[pid] || playerMapRef.current[pid]) : undefined;
+    const raw = (
+      (player as any).name ??
+      (player as any).player_name ??
+      (player as any).full_name ??
+      base?.name ??
+      (base as any)?.player_name ??
+      pid
+    ) as string;
+    const cleaned = (raw || '').toString().trim();
+    if (!cleaned || POSITION_SHORT_SET.has(cleaned.toUpperCase())) {
+      const fallback = base?.name?.trim();
+      if (fallback && !POSITION_SHORT_SET.has(fallback.toUpperCase())) return fallback;
+      return pid || 'Jogador';
+    }
+    return cleaned;
+  };
 
   useEffect(() => {
     loadData();
@@ -344,6 +367,24 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
   useEffect(() => {
     setValidated(false);
   }, []);
+
+  // Debug: expõe dados no window para inspeção no DevTools.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__startingEleven = startingEleven ?? [];
+      (window as any).__substitutes = substitutes ?? [];
+      (window as any).__availablePlayers = availablePlayers ?? [];
+      (window as any).__playersById = playersById ?? {};
+    }
+  }, [startingEleven, substitutes, availablePlayers, playersById]);
+
+  // Garantir debug mesmo se o efeito não correr.
+  if (typeof window !== 'undefined') {
+    (window as any).__startingEleven = startingEleven ?? [];
+    (window as any).__substitutes = substitutes ?? [];
+    (window as any).__availablePlayers = availablePlayers ?? [];
+    (window as any).__playersById = playersById ?? {};
+  }
 
   const checkSelectionPeriod = () => {
     // Temporarily keep selection open regardless of day/hour
@@ -483,7 +524,9 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
       setFieldPositions(positions);
       setStartingEleven(new Array(positions.length).fill(null));
 
-      const { data: selections } = await supabase
+      setRosterMessage(null);
+
+      const { data: selections, error: selectionsError } = await supabase
         .from('user_player_selections')
         .select(`
           player_id,
@@ -497,25 +540,44 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           )
         `)
         .eq('user_id', userId);
+      if (selectionsError) {
+        console.error('Error loading roster selections:', selectionsError);
+        setRosterMessage('Não conseguimos carregar o teu plantel. Volta a "Pick Players" e guarda o plantel novamente.');
+        setAvailablePlayers([]);
+        setAllPlayers([]);
+        setLoading(false);
+        return;
+      }
 
       // All players for global best XI
       const poolAll = await fetchAll<{ id: string; name: string; league: string; club: string; position: string; value: number }>(
         'player_pool',
         'id, name, league, club, position, value'
       );
-      const playerMap = new Map(poolAll.map((p) => [p.id, p]));
-      setPlayersById(Object.fromEntries(poolAll.map((p) => [p.id, p])));
+      const playerMap = new Map(poolAll.map((p) => [p.id.toString(), { ...p, id: p.id.toString() }]));
+      const playersObj = Object.fromEntries(
+        poolAll.map((p) => [p.id.toString(), { ...p, id: p.id.toString() }])
+      );
+      setPlayersById(playersObj);
+      playerMapRef.current = playersObj;
 
       const resolveName = (pid: string, p: any) => {
         const base = playerMap.get(pid);
-        const candidate =
-          (p as any)?.name ||
-          (p as any)?.player_name ||
-          base?.name;
-        if (!candidate || POSITION_SHORT_SET.has(candidate.trim().toUpperCase())) {
-          return base?.name || '';
+        const raw = (
+          p?.name ??
+          p?.player_name ??
+          p?.full_name ??
+          base?.name ??
+          (base as any)?.player_name ??
+          pid
+        ) as string;
+        const cleaned = (raw || '').toString().trim();
+        if (!cleaned || POSITION_SHORT_SET.has(cleaned.toUpperCase())) {
+          const fallback = base?.name?.trim() || (base as any)?.player_name;
+          if (fallback && !POSITION_SHORT_SET.has(fallback.toUpperCase())) return fallback;
+          return pid;
         }
-        return candidate;
+        return cleaned;
       };
 
       // Points (total season) and weekly points
@@ -578,10 +640,11 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
           .map(s => s.player_pool)
           .filter((p): p is Player => p !== null)
           .map(p => {
-            const pid = (p as any).player_id || p.id;
+            const pid = ((p as any).player_id || p.id).toString();
             const base = playerMap.get(pid) || {};
             const name = resolveName(pid, p);
-            return { ...base, ...p, id: pid, name };
+            const position = (p as any).position || base.position;
+            return ensureNamed({ ...base, ...p, id: pid, name, position } as Player)!;
           });
         setRosterIds(new Set(rosterPlayers.map(p => p.id)));
 
@@ -601,50 +664,56 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         });
 
         setAvailablePlayers(clampAvailable(rosterWithPoints));
-        const allEnriched = (poolAll || []).map(p => ({
-          ...p,
-          total_points: getTotalPoints(p.name),
-          weekly_points: weeklyMap[p.id] || 0,
-          total_points_useful: usefulTotals[p.id] || 0,
-          weekly_points_useful: usefulWeekly[p.id] || 0,
-          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
-          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
-          isRoster: rosterPlayers.some(r => r.id === p.id),
-        }));
+        const allEnriched = (poolAll || []).map(p => {
+          const pid = p.id.toString();
+          return ensureNamed({
+            ...p,
+            id: pid,
+            total_points: getTotalPoints(p.name),
+            weekly_points: weeklyMap[pid] || 0,
+            total_points_useful: usefulTotals[pid] || 0,
+            weekly_points_useful: usefulWeekly[pid] || 0,
+            cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
+            cost_per_point_useful: (usefulTotals[pid] || 0) > 0 ? p.value / (usefulTotals[pid] || 1) : undefined,
+            isRoster: rosterPlayers.some(r => r.id === pid),
+            name: resolveName(pid, p),
+          } as Player)!;
+        });
         setAllPlayers(allEnriched);
       } else {
         // No roster; still set all players with points
-        const allEnriched = (poolAll || []).map(p => ({
-          ...p,
-          total_points: getTotalPoints(p.name),
-          weekly_points: weeklyMap[p.id] || 0,
-          total_points_useful: usefulTotals[p.id] || 0,
-          weekly_points_useful: usefulWeekly[p.id] || 0,
-          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
-          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
-          isRoster: false,
-        }));
+        const allEnriched = (poolAll || []).map(p => {
+          const pid = p.id.toString();
+          return ensureNamed({
+            ...p,
+            id: pid,
+            total_points: getTotalPoints(p.name),
+            weekly_points: weeklyMap[pid] || 0,
+            total_points_useful: usefulTotals[pid] || 0,
+            weekly_points_useful: usefulWeekly[pid] || 0,
+            cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
+            cost_per_point_useful: (usefulTotals[pid] || 0) > 0 ? p.value / (usefulTotals[pid] || 1) : undefined,
+            isRoster: false,
+            name: resolveName(pid, p),
+            position: p.position,
+          } as Player)!;
+        });
         setAllPlayers(allEnriched);
-        setAvailablePlayers(clampAvailable(allEnriched));
-        setRosterIds(new Set(allEnriched.map(p => p.id)));
-        rosterWithPoints = allEnriched;
+        setAvailablePlayers([]);
+        setRosterIds(new Set());
+        rosterWithPoints = [];
+        setRosterMessage('Ainda não tens plantel escolhido. Vai a "Pick Players", escolhe e bloqueia o plantel antes de preencher o Eleven da Semana.');
       }
 
-      // Safety fallback: if rosterWithPoints ended up empty (e.g., admin/seed missing roster rows),
-      // allow selection from the full pool so the user can still build an eleven.
-      if (rosterWithPoints.length === 0 && poolAll) {
-        const allEnriched = (poolAll || []).map(p => ({
-          ...p,
-          total_points: getTotalPoints(p.name),
-          weekly_points: weeklyMap[p.id] || 0,
-          total_points_useful: usefulTotals[p.id] || 0,
-          weekly_points_useful: usefulWeekly[p.id] || 0,
-          cost_per_point: getTotalPoints(p.name) > 0 ? p.value / getTotalPoints(p.name) : undefined,
-          cost_per_point_useful: (usefulTotals[p.id] || 0) > 0 ? p.value / (usefulTotals[p.id] || 1) : undefined,
-          isRoster: false,
-        }));
-        setAllPlayers(allEnriched);
-        setAvailablePlayers(allEnriched);
+      if (rosterWithPoints.length === 0) {
+        setAllPlayers([]);
+        setAvailablePlayers([]);
+        setRosterIds(new Set());
+        if (!rosterMessage) {
+          setRosterMessage('Ainda não tens plantel escolhido. Vai a "Pick Players", escolhe e bloqueia o plantel antes de preencher o Eleven da Semana.');
+        }
+        setLoading(false);
+        return;
       }
 
       const today = new Date();
@@ -665,10 +734,10 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
         .maybeSingle();
 
       const enrichSelection = (list: Player[] | null | undefined) => (list || []).map((p) => {
-        const pid = (p as any).player_id || p.id;
+        const pid = ((p as any).player_id || p.id || '').toString();
         const base = playerMap.get(pid) || {};
         const name = resolveName(pid, p);
-        const merged = { ...base, ...p, id: pid, name };
+        const merged = ensureNamed({ ...base, ...p, id: pid, name } as Player) as Player;
         const totalPts = getTotalPoints(merged.name);
         const totalUseful = usefulTotals[pid] || 0;
         return {
@@ -823,32 +892,15 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
     e.preventDefault();
   };
 
-  const getDisplayName = (player?: Player | null) => {
-    if (!player) return 'Jogador';
-    const pid = (player as any).id || (player as any).player_id;
-    const fromMap = pid ? playersById[pid] : undefined;
-    const candidate =
-      (player as any).name ||
-      (player as any).player_name ||
-      fromMap?.name;
-    if (!candidate || POSITION_SHORT_SET.has(candidate.trim().toUpperCase())) {
-      return fromMap?.name || 'Jogador';
-    }
-    return candidate;
-  };
+  const getDisplayName = (player?: Player | null) => resolveDisplayName(player);
 
   const ensureNamed = (player: Player | null): Player | null => {
     if (!player) return player;
-    const pid = (player as any).id || (player as any).player_id;
-    const fromMap = pid ? playersById[pid] : undefined;
-    const name =
-      (player as any).name ||
-      (player as any).player_name ||
-      fromMap?.name;
-    if (name && !POSITION_SHORT_SET.has(name.trim().toUpperCase())) {
-      return { ...player, id: pid || player.id, name };
-    }
-    return { ...player, id: pid || player.id, name: fromMap?.name || player.name || 'Jogador' };
+    const pid = ((player as any).id || (player as any).player_id || '').toString();
+    const base = pid ? (playersById[pid] || playerMapRef.current[pid]) : undefined;
+    const safeName = resolveDisplayName({ ...player, id: pid || player.id } as Player);
+    const position = player.position || (player as any).player_position || base?.position;
+    return { ...player, id: pid || player.id, name: safeName, position };
   };
 
   const dedupRostered = (list: Player[]) => {
@@ -1202,6 +1254,12 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
             </div>
           )}
 
+          {rosterMessage && (
+            <div className="max-w-3xl mx-auto mb-4 bg-red-500/20 border border-red-400/70 rounded-lg px-4 py-3 text-red-100">
+              {rosterMessage}
+            </div>
+          )}
+
           <div className="flex items-center justify-center gap-3 mb-4">
             <label className="text-cyan-300 font-semibold">Tactic:</label>
             <select
@@ -1310,6 +1368,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                     draggable={!validated}
                     onDragStart={() => handleDragStart(startingEleven[index]!, 'field', index)}
                     onDoubleClick={() => handleFieldPlayerDoubleClick(index)}
+                    data-xi-card="starting"
                     className={`bg-gradient-to-b from-cyan-500 to-cyan-600 border-2 border-cyan-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center w-full ${
                     validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-cyan-500/50'
                   }`}
@@ -1363,6 +1422,7 @@ export default function PickEleven({ userId, onComplete, onBack }: PickElevenPro
                         draggable={!validated}
                         onDragStart={() => handleDragStart(sub, 'subs', index)}
                         onDoubleClick={() => handleSubPlayerDoubleClick(index)}
+                        data-xi-card="sub"
                       className={`bg-gradient-to-b from-yellow-400 to-yellow-500 border-2 border-yellow-300 rounded-lg p-2 text-center shadow-lg transition-all h-14 flex flex-col justify-center ${
                         validated ? 'cursor-not-allowed opacity-90' : 'cursor-move hover:shadow-yellow-500/50'
                       }`}
