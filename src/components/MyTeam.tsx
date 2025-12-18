@@ -52,31 +52,6 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
   const loadPlayerPoints = async () => {
     try {
-      const normalizeName = (name: string) =>
-        (name || '')
-          .toLowerCase()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .trim();
-
-      const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
-        const pageSize = 1000;
-        let from = 0;
-        let all: T[] = [];
-        while (true) {
-          const { data, error } = await supabase
-            .from(table)
-            .select(columns)
-            .range(from, from + pageSize - 1);
-          if (error) throw error;
-          const chunk = data || [];
-          all = all.concat(chunk);
-          if (chunk.length < pageSize) break;
-          from += pageSize;
-        }
-        return all;
-      };
-
       const { data: userProfile } = await supabase
         .from('user_profiles')
         .select('team_value, selected_team_id')
@@ -104,82 +79,37 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         .select('*')
         .in('id', playerIds);
 
-      // Aggregate total points by player name (case/diacritics insensitive)
-      const perf = await fetchAll<{ player_name: string; performance_score: number }>(
-        'player_performance_data',
-        'player_name, performance_score'
-      );
+      const { data: totalsData } = await supabase
+        .from('user_player_total_points')
+        .select('player_id, total_points, last_week_points, useful_total_points, useful_week_points')
+        .eq('user_id', userId)
+        .in('player_id', playerIds);
 
-      const totalByName = (perf || []).reduce((acc, row) => {
-        if (!row.player_name) return acc;
-        const key = normalizeName(row.player_name);
-        acc[key] = (acc[key] || 0) + (row.performance_score || 0);
+      const totalsMap = (totalsData || []).reduce((acc, row) => {
+        acc[row.player_id] = {
+          total_points: row.total_points ?? 0,
+          last_week_points: row.last_week_points ?? 0,
+          useful_total_points: row.useful_total_points ?? 0,
+          useful_week_points: row.useful_week_points ?? 0
+        };
         return acc;
-      }, {} as Record<string, number>);
-
-      const getTotalPoints = (name: string) => {
-        const key = normalizeName(name);
-        if (key in totalByName) return totalByName[key];
-        // Fallback: match inclusivo (para abreviados ou nomes alternativos)
-        const fallback = Object.entries(totalByName).find(([stored]) => stored.includes(key) || key.includes(stored));
-        return fallback ? fallback[1] : 0;
-      };
-
-      // Weekly points (sum of all rows per player_id)
-      const weeklyRows = await fetchAll<{ player_id: string; points: number; week_start_date?: string }>(
-        'player_weekly_points',
-        'player_id, points, week_start_date'
-      );
-      const weeklyMap = (weeklyRows || []).reduce((acc, row) => {
-        acc[row.player_id] = (acc[row.player_id] || 0) + (row.points || 0);
-        return acc;
-      }, {} as Record<string, number>);
-
-      // Useful points: only when selected (starting + subs) within the week range
-      const { data: weeklySelections } = await supabase
-        .from('weekly_eleven_selections')
-        .select('starting_eleven, substitutes, week_start_date, week_end_date')
-        .eq('user_id', userId);
-
-      const selectionRanges =
-        (weeklySelections || []).map((sel: any) => ({
-          start: sel.week_start_date ? new Date(sel.week_start_date) : null,
-          end: sel.week_end_date ? new Date(sel.week_end_date) : null,
-          ids: new Set([
-            ...(sel.starting_eleven || []).map((p: any) => p.id),
-            ...(sel.substitutes || []).map((p: any) => p.id),
-          ].filter(Boolean)),
-        })).filter((s) => s.start && s.end);
-
-      const usefulTotals: Record<string, number> = {};
-      const usefulWeekly: Record<string, number> = {};
-      const now = new Date();
-
-      (weeklyRows || []).forEach((row) => {
-        const wkDate = row.week_start_date ? new Date(row.week_start_date) : null;
-        if (!wkDate) return;
-        const selection = selectionRanges.find((s) => s.start && s.end && wkDate >= s.start && wkDate <= s.end);
-        if (selection && selection.ids.has(row.player_id)) {
-          usefulTotals[row.player_id] = (usefulTotals[row.player_id] || 0) + (row.points || 0);
-          if (now >= (selection.start as Date) && now <= (selection.end as Date)) {
-            usefulWeekly[row.player_id] = (usefulWeekly[row.player_id] || 0) + (row.points || 0);
-          }
-        }
-      });
+      }, {} as Record<string, { total_points: number; last_week_points: number; useful_total_points: number; useful_week_points: number }>);
 
       if (playersData) {
         const playersWithPoints: PlayerWithPoints[] = playersData.map(player => {
-          const totalPoints = getTotalPoints(player.name);
-          const lastWeek = weeklyMap[player.id] || 0;
-          const totalUseful = usefulTotals[player.id] || 0;
-          const weeklyUseful = usefulWeekly[player.id] || 0;
-          const costPerPointUseful = totalUseful > 0 ? player.value / totalUseful : undefined;
+          const totals = totalsMap[player.id] || {
+            total_points: 0,
+            last_week_points: 0,
+            useful_total_points: 0,
+            useful_week_points: 0
+          };
+          const costPerPointUseful = totals.useful_total_points > 0 ? player.value / totals.useful_total_points : undefined;
           return {
             ...player,
-            total_points: totalPoints,
-            last_week_points: lastWeek,
-            total_points_useful: totalUseful,
-            weekly_points_useful: weeklyUseful,
+            total_points: totals.total_points,
+            last_week_points: totals.last_week_points,
+            total_points_useful: totals.useful_total_points,
+            weekly_points_useful: totals.useful_week_points,
             cost_per_point_useful: costPerPointUseful
           };
         });
