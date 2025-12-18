@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import flLogo from '/public/FL_Logo.png';
-import introImg from '/public/Intro.png';
+const flLogo = '/FL_Logo.png';
+const introImg = '/Intro.png';
 import { LanguageProvider } from './lib/LanguageContext';
 import AuthForm from './components/AuthForm';
 import Dashboard from './components/Dashboard';

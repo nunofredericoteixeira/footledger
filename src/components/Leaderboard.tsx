@@ -12,9 +12,9 @@ interface LeaderboardProps {
 interface LeaderboardEntry {
   userId: string;
   userEmail: string;
-  teamValue: number;
-  totalPoints: number;
-  costPerPoint: number;
+  remainingBudget: number;
+  usefulPoints: number;
+  currentRatio: number | null;
   position: number;
 }
 
@@ -29,39 +29,67 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
 
   const loadLeaderboard = async () => {
     try {
-      const { data: profiles } = await supabase
-        .from('user_profiles')
-        .select(`
-          id,
-          team_value,
-          total_points
-        `)
-        .neq('is_admin', true);
+      const [profilesResponse, usefulTotalsResponse, appUsersResponse] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('id, remaining_budget, username, is_admin'),
+        supabase
+          .from('user_useful_points_totals')
+          .select('user_id, useful_points'),
+        supabase
+          .from('app_users')
+          .select('id, email, name')
+      ]);
 
-      if (profiles) {
-        const { data: { users } } = await supabase.auth.admin.listUsers();
+      const profiles = profilesResponse.data || [];
+      const usefulTotals = usefulTotalsResponse.data || [];
+      const appUsers = appUsersResponse.data || [];
+
+      if (profiles.length > 0) {
+        const userMetaById = appUsers.reduce<Record<string, { email?: string | null; name?: string | null }>>((acc, user) => {
+          acc[user.id] = { email: user.email, name: user.name };
+          return acc;
+        }, {});
+
+        const usefulPointsByUser = usefulTotals.reduce<Record<string, number>>((acc, row) => {
+          acc[row.user_id] = Number(row.useful_points) || 0;
+          return acc;
+        }, {});
 
         const leaderboardData: LeaderboardEntry[] = profiles
           .map(profile => {
-            const user = users?.find(u => u.id === profile.id);
-            const teamValue = Number(profile.team_value) || 0;
-            const totalPoints = profile.total_points || 0;
-            const costPerPoint = totalPoints > 0 ? teamValue / totalPoints : Infinity;
+            const remainingBudget = Number(profile.remaining_budget) || 0;
+            const usefulPoints = usefulPointsByUser[profile.id] || 0;
+            const currentRatio = usefulPoints > 0 ? remainingBudget / usefulPoints : null;
+            const meta = userMetaById[profile.id];
+            const fallbackName =
+              profile.id === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' && profile.is_admin
+                ? 'GiniusMind'
+                : `User ${profile.id.slice(0, 6)}`;
+
+            const displayName =
+              profile.username ||
+              meta?.name ||
+              meta?.email ||
+              fallbackName;
 
             return {
               userId: profile.id,
-              userEmail: user?.email || 'Unknown User',
-              teamValue,
-              totalPoints,
-              costPerPoint
+              userEmail: displayName,
+              remainingBudget,
+              usefulPoints,
+              currentRatio
             };
           })
-          .filter(entry => entry.totalPoints > 0)
           .sort((a, b) => {
-            if (a.costPerPoint === b.costPerPoint) {
-              return a.teamValue - b.teamValue;
+            const ratioA = entryRatioValue(a.currentRatio);
+            const ratioB = entryRatioValue(b.currentRatio);
+
+            if (ratioA === ratioB) {
+              return a.remainingBudget - b.remainingBudget;
             }
-            return a.costPerPoint - b.costPerPoint;
+
+            return ratioA - ratioB;
           })
           .map((entry, index) => ({
             ...entry,
@@ -76,6 +104,9 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
       setLoading(false);
     }
   };
+
+  const entryRatioValue = (ratio: number | null) =>
+    ratio === null || ratio === undefined ? Infinity : ratio;
 
   const getPositionBadge = (position: number) => {
     if (position === 1) {
@@ -151,8 +182,8 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
             <Trophy className="w-12 h-12 text-yellow-400" />
             <h1 className="text-5xl font-bold text-white">{getTranslation('screens.leaderboard', language)}</h1>
           </div>
-          <p className="text-cyan-200 text-lg">Ranked by cost per point ratio</p>
-          <p className="text-cyan-300 text-sm mt-1">Lower cost per point = better ranking</p>
+          <p className="text-cyan-200 text-lg">Ranked by current ratio (budget ÷ PtsTU)</p>
+          <p className="text-cyan-300 text-sm mt-1">Lower current ratio = better ranking</p>
         </div>
 
         {entries.length === 0 ? (
@@ -170,8 +201,8 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
                     <th className="px-6 py-4 text-left text-cyan-300 font-bold">{getTranslation('screens.rank', language)}</th>
                     <th className="px-6 py-4 text-left text-cyan-300 font-bold">{getTranslation('screens.manager', language)}</th>
                     <th className="px-6 py-4 text-right text-cyan-300 font-bold">{getTranslation('screens.budget', language)}</th>
-                    <th className="px-6 py-4 text-right text-cyan-300 font-bold">{getTranslation('screens.totalPoints', language)}</th>
-                    <th className="px-6 py-4 text-right text-cyan-300 font-bold">Cost/Point</th>
+                    <th className="px-6 py-4 text-right text-cyan-300 font-bold">{getTranslation('screens.usefulPoints', language)}</th>
+                    <th className="px-6 py-4 text-right text-cyan-300 font-bold">{getTranslation('screens.currentRatio', language)}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -199,18 +230,18 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-cyan-200 font-mono">
-                          €{entry.teamValue.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M
+                          €{entry.remainingBudget.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <span className="text-green-300 font-bold text-lg">
-                          {entry.totalPoints}
+                          {entry.usefulPoints}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="inline-block bg-cyan-500/20 border border-cyan-400/30 rounded-lg px-3 py-1">
                           <span className="text-cyan-100 font-bold">
-                            €{entry.costPerPoint.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}M
+                            {entry.currentRatio === null ? '—' : `${entry.currentRatio.toFixed(2)} €`}
                           </span>
                         </div>
                       </td>
@@ -227,19 +258,19 @@ function Leaderboard({ onBack, showTopPlayers = false }: LeaderboardProps) {
           <ul className="space-y-2 text-cyan-200">
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 mt-1">•</span>
-              <span>Rankings are calculated by dividing your Team Budget by your Total Points</span>
+              <span>Rankings are calculated by dividing your remaining budget by total PtsTU</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 mt-1">•</span>
-              <span>Lower cost per point means better value and higher ranking</span>
+              <span>Lower current ratio means better value and higher ranking</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 mt-1">•</span>
-              <span>In case of a tie, the user with the lower team budget ranks higher</span>
+              <span>In case of a tie, the user with the lower remaining budget ranks higher</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="text-cyan-400 mt-1">•</span>
-              <span>Only users with at least 1 point are shown in the rankings</span>
+              <span>All managers appear, even if they still have 0 PtsTU</span>
             </li>
           </ul>
         </div>

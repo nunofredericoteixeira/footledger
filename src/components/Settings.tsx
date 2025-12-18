@@ -69,7 +69,7 @@ function Settings({ userId, onBack }: SettingsProps) {
     <div className="min-h-screen bg-gradient-to-b from-black via-gray-800 to-gray-700 relative overflow-hidden">
       <div
         className="absolute inset-0 bg-cover bg-center opacity-15 pointer-events-none"
-        style={{ backgroundImage: "url('/Campo de futebol copy.jpeg')" }}
+        style={{ backgroundImage: "url('/Campo de futebol.png')" }}
       />
       <div
         className="absolute inset-0 bg-contain bg-center bg-no-repeat opacity-25 pointer-events-none"
@@ -90,9 +90,9 @@ function Settings({ userId, onBack }: SettingsProps) {
             <ChevronLeft className="w-5 h-5" />
           </button>
           <img
-            src="/ChatGPT Image 4_10_2025, 11_26_23.png"
-            alt="FL Logo"
-            className="w-12 h-12"
+            src="/FL_Logo.png"
+            alt="FootLedger"
+            className="w-12 h-12 object-contain drop-shadow"
           />
           <div className="w-10" />
         </div>

@@ -29,6 +29,8 @@ interface Auction {
   // Optional preview stats
   total_points?: number;
   games_played?: number;
+  week_label?: string;
+  week_start?: string;
 }
 
 interface Bid {
@@ -49,6 +51,37 @@ const normalizeName = (name: string) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+
+const getWeekInfo = (dateString: string) => {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return {
+      label: 'Data indefinida',
+      start: dateString,
+    };
+  }
+  const start = new Date(date);
+  const day = start.getDay(); // 0 (Sun) - 6 (Sat)
+  const distanceToMonday = (day + 6) % 7; // Monday as 0
+  start.setDate(start.getDate() - distanceToMonday);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  const format = (d: Date) =>
+    d.toLocaleDateString('pt-PT', {
+      day: '2-digit',
+      month: 'short',
+    });
+
+  const label = `${format(start)} - ${format(end)}`;
+
+  return {
+    label,
+    start: start.toISOString(),
+  };
+};
 
 export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const { language } = useLanguage();
@@ -74,6 +107,16 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const [walletBalance, setWalletBalance] = useState<string>('0');
   const [connectingWallet, setConnectingWallet] = useState(false);
   const [walletError, setWalletError] = useState('');
+  const [winnerNames, setWinnerNames] = useState<Record<string, string>>({});
+  const [auctionWinners, setAuctionWinners] = useState<Record<string, string>>({});
+  const [availableWeeks, setAvailableWeeks] = useState<{ label: string; start: string }[]>([]);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>('');
+
+  const isAuctionEnded = (auction: Auction | null) => {
+    if (!auction) return false;
+    if (auction.status && auction.status !== 'active' && auction.status !== 'preview') return true;
+    return new Date(auction.end_date).getTime() <= Date.now();
+  };
 
   useEffect(() => {
     loadAuctions();
@@ -198,6 +241,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         status: 'preview',
         total_points: totalPoints,
         games_played: gamesPlayed,
+        week_label: getWeekInfo(now.toISOString()).label,
+        week_start: getWeekInfo(now.toISOString()).start,
         auction_players: {
           id: best.id,
           name: best.name,
@@ -220,7 +265,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
     const { data, error } = await supabase
       .from('auctions')
       .select('*, auction_players(*)')
-      .eq('status', 'active')
+      .in('status', ['active', 'completed'])
       .order('end_date', { ascending: true });
 
     if (error) {
@@ -228,7 +273,102 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       setAuctions([]);
       setFallbackAuction(null);
     } else if (data && data.length > 0) {
-      setAuctions(data);
+      const sorted = [...data].sort((a, b) => {
+        const endedA = isAuctionEnded(a);
+        const endedB = isAuctionEnded(b);
+        if (endedA !== endedB) return endedA ? 1 : -1;
+        return new Date(a.end_date).getTime() - new Date(b.end_date).getTime();
+      });
+      const auctionsWithWeek = sorted.map((auction) => {
+        const info = getWeekInfo(auction.start_date || auction.end_date);
+        return {
+          ...auction,
+          week_label: info.label,
+          week_start: info.start,
+        };
+      });
+
+      setAuctions(auctionsWithWeek);
+      const weeksMap = new Map<string, { label: string; start: string }>();
+      auctionsWithWeek.forEach((auction) => {
+        if (auction.week_start && auction.week_label && !weeksMap.has(auction.week_start)) {
+          weeksMap.set(auction.week_start, {
+            label: auction.week_label,
+            start: auction.week_start,
+          });
+        }
+      });
+      const weekList = Array.from(weeksMap.values()).sort(
+        (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+      );
+      setAvailableWeeks(weekList);
+      if (selectedWeekStart && !weekList.find((week) => week.start === selectedWeekStart)) {
+        setSelectedWeekStart('');
+      }
+
+      const auctionWinnerMap: Record<string, string> = {};
+      const finishedAuctions = auctionsWithWeek.filter((auction) => isAuctionEnded(auction));
+
+      finishedAuctions.forEach((auction) => {
+        if (auction.winner_user_id) {
+          auctionWinnerMap[auction.id] = auction.winner_user_id;
+        }
+      });
+
+      if (finishedAuctions.length > 0) {
+        const { data: bidsData, error: bidsError } = await supabase
+          .from('auction_bids')
+          .select('auction_id, user_id, bid_amount')
+          .in(
+            'auction_id',
+            finishedAuctions.map((a) => a.id)
+          )
+          .order('bid_amount', { ascending: false });
+
+        if (!bidsError && bidsData) {
+          bidsData.forEach((bid) => {
+            if (!auctionWinnerMap[bid.auction_id]) {
+              auctionWinnerMap[bid.auction_id] = bid.user_id;
+            }
+          });
+        }
+      }
+
+      const winnerIds = Array.from(new Set(Object.values(auctionWinnerMap)));
+
+      if (winnerIds.length > 0) {
+        const [profilesRes, appUsersRes] = await Promise.all([
+          supabase
+            .from('user_profiles')
+            .select('id, username')
+            .in('id', winnerIds),
+          supabase
+            .from('app_users')
+            .select('id, name, email')
+            .in('id', winnerIds)
+        ]);
+
+        const nameMap: Record<string, string> = {};
+        profilesRes.data?.forEach((profile) => {
+          if (profile.username) {
+            nameMap[profile.id] = profile.username;
+          }
+        });
+        appUsersRes.data?.forEach((user) => {
+          if (!nameMap[user.id]) {
+            nameMap[user.id] = user.name || user.email || `User ${user.id.slice(0, 6)}`;
+          }
+        });
+        if (!nameMap['ee0ca527-b03c-459f-92fd-4d4a9d129faa']) {
+          nameMap['ee0ca527-b03c-459f-92fd-4d4a9d129faa'] = 'GiniusMind';
+        }
+
+        setWinnerNames(nameMap);
+        setAuctionWinners(auctionWinnerMap);
+      } else {
+        setWinnerNames({});
+        setAuctionWinners({});
+      }
       setFallbackAuction(null);
     } else {
       setAuctions([]);
@@ -312,6 +452,11 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
 
   const handlePlaceBid = async () => {
     if (!selectedAuction) return;
+
+    if (isAuctionEnded(selectedAuction)) {
+      setError('This auction has already ended');
+      return;
+    }
 
     const amount = Number(bidAmount);
     if (!amount || amount <= 0) {
@@ -398,6 +543,10 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
     return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
   };
 
+  const filteredAuctions = selectedWeekStart
+    ? auctions.filter((auction) => auction.week_start === selectedWeekStart)
+    : auctions;
+
   const getTimeRemaining = (endDate: string) => {
     const now = new Date();
     const end = new Date(endDate);
@@ -420,6 +569,12 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   if (selectedAuction) {
     const player = selectedAuction.auction_players;
     const minBid = (selectedAuction.current_bid || selectedAuction.starting_bid || 0) + 1;
+    const auctionEnded = isAuctionEnded(selectedAuction);
+    const winnerId = auctionWinners[selectedAuction.id];
+    const winnerLabel = winnerId
+      ? winnerNames[winnerId] ||
+        (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
+      : null;
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-purple-900 to-pink-900 relative">
@@ -458,6 +613,9 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                 />
               )}
               <h1 className="text-4xl font-bold text-white mb-2">{player.name}</h1>
+              {selectedAuction.week_label && (
+                <p className="text-purple-300 text-sm mb-1">Semana: {selectedAuction.week_label}</p>
+              )}
               <p className="text-purple-200 text-lg mb-4">{player.position}</p>
               <div className="flex items-center gap-4 mb-6">
                 <div className="bg-purple-500/20 px-4 py-2 rounded-lg">
@@ -516,6 +674,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     onChange={(e) => setBidAmount(e.target.value)}
                     placeholder={`Min: ${formatValue(minBid)} FL`}
                     className="w-full px-4 py-3 bg-purple-900/50 border border-purple-500/30 text-white rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+                    disabled={auctionEnded}
                   />
                 </div>
 
@@ -531,13 +690,19 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   </div>
                 )}
 
+                {auctionEnded && winnerLabel && (
+                  <div className="bg-red-500/20 border border-red-500 text-red-100 px-4 py-3 rounded-lg text-sm mb-4">
+                    Leilão Terminado • Vencedor: {winnerLabel}
+                  </div>
+                )}
+
                 <button
                   onClick={handlePlaceBid}
-                  disabled={submitting}
+                  disabled={submitting || auctionEnded}
                   className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   <Gavel className="w-5 h-5" />
-                  {submitting ? 'Placing Bid...' : 'Place Bid'}
+                  {auctionEnded ? 'Leilão Terminado' : submitting ? 'Placing Bid...' : 'Place Bid'}
                 </button>
               </div>
 
@@ -610,6 +775,39 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         <p className="text-purple-200 text-center mb-6 text-lg">
           Bid on special players to use in your Eleven of the Week
         </p>
+
+        {availableWeeks.length > 0 && (
+          <div className="bg-black/40 backdrop-blur-md rounded-2xl p-4 border border-purple-400/30 mb-8">
+            <div className="flex flex-col gap-3">
+              <span className="text-purple-200 text-sm font-semibold">Filtrar por semana</span>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedWeekStart('')}
+                  className={`px-4 py-2 rounded-full border text-sm transition-colors ${
+                    selectedWeekStart === ''
+                      ? 'bg-purple-500 text-white border-purple-500'
+                      : 'bg-transparent text-purple-200 border-purple-500/40 hover:border-purple-500/80'
+                  }`}
+                >
+                  Todas
+                </button>
+                {availableWeeks.map((week) => (
+                  <button
+                    key={week.start}
+                    onClick={() => setSelectedWeekStart(week.start)}
+                    className={`px-4 py-2 rounded-full border text-sm transition-colors ${
+                      selectedWeekStart === week.start
+                        ? 'bg-purple-500 text-white border-purple-500'
+                        : 'bg-transparent text-purple-200 border-purple-500/40 hover:border-purple-500/80'
+                    }`}
+                  >
+                    {week.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-black/60 backdrop-blur-md rounded-2xl p-6 border border-purple-400/30">
@@ -785,15 +983,41 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
             </div>
           )
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {auctions.map((auction) => {
-              const player = auction.auction_players;
-              return (
-                <div
-                  key={auction.id}
-                  onClick={() => setSelectedAuction(auction)}
-                  className="bg-black/60 backdrop-blur-md rounded-2xl p-6 border border-purple-400/30 hover:border-purple-400 transition-all cursor-pointer hover:scale-105"
+          <>
+            {filteredAuctions.length === 0 ? (
+              <div className="bg-black/60 backdrop-blur-md rounded-2xl p-12 border border-purple-400/30 text-center">
+                <Clock className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-white mb-2">Sem leilões nesta semana</h2>
+                <p className="text-purple-200">Escolhe outra semana para ver os leilões correspondentes.</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredAuctions.map((auction) => {
+                  const player = auction.auction_players;
+                  const auctionEnded = isAuctionEnded(auction);
+                  const winnerId = auctionWinners[auction.id];
+              const winnerLabel =
+                auctionEnded && winnerId
+                  ? winnerNames[winnerId] ||
+                    (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
+                  : null;
+                  return (
+                    <div
+                      key={auction.id}
+                  onClick={() => {
+                    if (!auctionEnded) setSelectedAuction(auction);
+                  }}
+                  className={`backdrop-blur-md rounded-2xl p-6 border transition-all ${
+                    auctionEnded
+                      ? 'bg-red-900/60 border-red-500/40 hover:border-red-500 cursor-default hover:scale-100'
+                      : 'bg-black/60 border-purple-400/30 hover:border-purple-400 cursor-pointer hover:scale-105'
+                  }`}
                 >
+                  {auction.week_label && (
+                    <div className="text-xs uppercase tracking-wide text-purple-200 mb-2">
+                      Semana: {auction.week_label}
+                    </div>
+                  )}
                   {player.image_url && (
                     <img
                       src={player.image_url}
@@ -813,18 +1037,35 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     </div>
                     <div className="text-right">
                       <p className="text-purple-300 text-sm">Time Left</p>
-                      <p className="text-purple-400 font-bold">{getTimeRemaining(auction.end_date)}</p>
+                      <p className={`font-bold ${auctionEnded ? 'text-red-300' : 'text-purple-400'}`}>
+                        {auctionEnded ? 'Finished' : getTimeRemaining(auction.end_date)}
+                      </p>
                     </div>
                   </div>
 
-                  <button className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all flex items-center justify-center gap-2">
+                  <button
+                    disabled={auctionEnded}
+                    className={`w-full py-3 font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${
+                      auctionEnded
+                        ? 'bg-red-500/70 text-white cursor-not-allowed'
+                        : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
+                    }`}
+                  >
                     <Gavel className="w-5 h-5" />
-                    Place Bid
+                    {auctionEnded ? 'Leilão Terminado' : 'Place Bid'}
                   </button>
+
+                  {winnerLabel && (
+                    <p className="text-red-200 text-sm text-center mt-3">
+                      Vencedor: {winnerLabel}
+                    </p>
+                  )}
                 </div>
               );
-            })}
-          </div>
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 

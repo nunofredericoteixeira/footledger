@@ -21,6 +21,17 @@ interface PlayerWithPoints extends Player {
   cost_per_point_useful?: number;
 }
 
+interface AuctionRosterPlayer {
+  winId: string;
+  name: string;
+  league: string;
+  club: string;
+  position: string;
+  value: number;
+  usefulPoints: number;
+  wonAt?: string | null;
+}
+
 interface MyTeamProps {
   userId: string;
   onComplete: () => void;
@@ -30,10 +41,12 @@ interface MyTeamProps {
 export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const { language } = useLanguage();
   const [players, setPlayers] = useState<PlayerWithPoints[]>([]);
+  const [auctionPlayers, setAuctionPlayers] = useState<AuctionRosterPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'total' | 'weekly' | 'position'>('position');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [initialBudget, setInitialBudget] = useState(0);
+  const [markingWin, setMarkingWin] = useState<string | null>(null);
   const formatRatio = (points: number, budget: number) => {
     if (points <= 0) return `${(budget / 1000000).toFixed(2)} M€`;
     const raw = (budget / points); // euros per point
@@ -46,12 +59,44 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
     return `${raw.toFixed(0)} € / Point`;
   };
 
+  const formatAuctionDate = (wonAt?: string | null) => {
+    if (!wonAt) return null;
+    const date = new Date(wonAt);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString(language === 'pt' ? 'pt-PT' : 'en-US', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const formatAuctionWeek = (wonAt?: string | null) => {
+    if (!wonAt) return null;
+    const date = new Date(wonAt);
+    if (Number.isNaN(date.getTime())) return null;
+    const start = new Date(date);
+    const day = start.getDay();
+    const distanceToMonday = (day + 6) % 7;
+    start.setDate(start.getDate() - distanceToMonday);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+
+    const formatter = new Intl.DateTimeFormat(language === 'pt' ? 'pt-PT' : 'en-US', {
+      day: '2-digit',
+      month: 'short'
+    });
+    return `${formatter.format(start)} - ${formatter.format(end)}`;
+  };
+
   useEffect(() => {
     loadPlayerPoints();
   }, [userId]);
 
   const loadPlayerPoints = async () => {
     try {
+      await supabase.rpc('sync_auction_wins');
+
       const { data: userProfile } = await supabase
         .from('user_profiles')
         .select('team_value, selected_team_id')
@@ -67,23 +112,35 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         .select('player_id')
         .eq('user_id', userId);
 
-      if (!userSelections || userSelections.length === 0) {
-        setLoading(false);
-        return;
+      const playerIds = userSelections?.map(s => s.player_id) || [];
+
+      let playersData: Player[] | null = null;
+      let totalsData:
+        | {
+            player_id: string;
+            total_points: number;
+            last_week_points: number;
+            useful_total_points: number;
+            useful_week_points: number;
+          }[]
+        | null = null;
+
+      if (playerIds.length > 0) {
+        const playersResponse = await supabase
+          .from('player_pool')
+          .select('*')
+          .in('id', playerIds);
+        playersData = playersResponse.data;
+
+        const totalsResponse = await supabase
+          .from('user_player_total_points')
+          .select('player_id, total_points, last_week_points, useful_total_points, useful_week_points')
+          .eq('user_id', userId)
+          .in('player_id', playerIds);
+        totalsData = totalsResponse.data;
+      } else {
+        setPlayers([]);
       }
-
-      const playerIds = userSelections.map(s => s.player_id);
-
-      const { data: playersData } = await supabase
-        .from('player_pool')
-        .select('*')
-        .in('id', playerIds);
-
-      const { data: totalsData } = await supabase
-        .from('user_player_total_points')
-        .select('player_id, total_points, last_week_points, useful_total_points, useful_week_points')
-        .eq('user_id', userId)
-        .in('player_id', playerIds);
 
       const totalsMap = (totalsData || []).reduce((acc, row) => {
         acc[row.player_id] = {
@@ -116,6 +173,25 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
         setPlayers(playersWithPoints);
       }
+
+      const { data: auctionPoints } = await supabase
+        .from('user_auction_useful_points')
+        .select('win_id, useful_points, player_name, position, club, league, player_value, won_at')
+        .eq('user_id', userId)
+        .order('won_at', { ascending: false });
+
+      const rosterAuctionPlayers: AuctionRosterPlayer[] = (auctionPoints || []).map(row => ({
+        winId: row.win_id,
+        name: row.player_name,
+        league: row.league || '',
+        club: row.club || '',
+        position: row.position || 'N/A',
+        value: Number(row.player_value) || 0,
+        usefulPoints: Number(row.useful_points) || 0,
+        wonAt: row.won_at
+      }));
+
+      setAuctionPlayers(rosterAuctionPlayers);
     } catch (error) {
       console.error('Error loading player points:', error);
     } finally {
@@ -173,7 +249,9 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
   const totalUseful = players.reduce((sum, p) => sum + p.total_points_useful, 0);
   const weeklyUseful = players.reduce((sum, p) => sum + p.weekly_points_useful, 0);
-  const currentRatio = formatRatio(totalUseful, initialBudget);
+  const totalAuctionUseful = auctionPlayers.reduce((sum, p) => sum + p.usefulPoints, 0);
+  const combinedUseful = totalUseful + totalAuctionUseful;
+  const currentRatio = formatRatio(combinedUseful, initialBudget);
 
   const getPointsIcon = (points: number) => {
     if (points > 0) return <TrendingUp className="w-4 h-4 text-green-400" />;
@@ -186,6 +264,25 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
     if (['Centre-Back', 'Left-Back', 'Right-Back'].includes(position)) return 'bg-blue-500/20 text-blue-300 border-blue-400/30';
     if (['Defensive Midfield', 'Central Midfield', 'Attacking Midfield', 'Left Midfield', 'Right Midfield'].includes(position)) return 'bg-green-500/20 text-green-300 border-green-400/30';
     return 'bg-red-500/20 text-red-300 border-red-400/30';
+  };
+
+  const handleMarkAuctionPlayerUsed = async (winId: string) => {
+    setMarkingWin(winId);
+    try {
+      await supabase
+        .from('user_auction_wins')
+        .update({
+          is_used: true,
+          used_in_week: new Date().toISOString().slice(0, 10)
+        })
+        .eq('id', winId)
+        .eq('user_id', userId);
+      await loadPlayerPoints();
+    } catch (error) {
+      console.error('Failed to mark auction player as used:', error);
+    } finally {
+      setMarkingWin(null);
+    }
   };
 
   if (loading) {
@@ -252,6 +349,12 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
               <div className="text-amber-200 text-sm mb-1">PtsT úteis</div>
               <div className="text-3xl font-bold text-white">{totalUseful.toFixed(1)}</div>
             </div>
+            {auctionPlayers.length > 0 && (
+              <div className="bg-pink-500/20 backdrop-blur-md border border-pink-400/50 rounded-xl py-4 px-6">
+                <div className="text-pink-200 text-sm mb-1">PtsTU Leiloados</div>
+                <div className="text-3xl font-bold text-white">{totalAuctionUseful.toFixed(1)}</div>
+              </div>
+            )}
             <div className="bg-green-500/20 backdrop-blur-md border border-green-400/50 rounded-xl py-4 px-6">
               <div className="text-green-200 text-sm mb-1">{getTranslation('screens.weeklyPoints', language)}</div>
               <div className="text-3xl font-bold text-white">{lastWeekTotal.toFixed(1)}</div>
@@ -260,6 +363,12 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
               <div className="text-amber-200 text-sm mb-1">PtsS úteis</div>
               <div className="text-3xl font-bold text-white">{weeklyUseful.toFixed(1)}</div>
             </div>
+            {auctionPlayers.length > 0 && (
+              <div className="bg-indigo-500/20 backdrop-blur-md border border-indigo-400/50 rounded-xl py-4 px-6">
+                <div className="text-indigo-200 text-sm mb-1">PtsTU Total</div>
+                <div className="text-3xl font-bold text-white">{combinedUseful.toFixed(1)}</div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -341,6 +450,70 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
         <div className="mt-6 text-center text-cyan-200 text-sm">
           <p>Points are updated after each matchday</p>
+        </div>
+
+        <div className="mt-10">
+          <div className="bg-black/40 backdrop-blur-md border border-purple-400/40 rounded-2xl p-6">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  {getTranslation('screens.auctionedPlayers', language)}
+                </h2>
+                <p className="text-purple-200 text-sm">
+                  {getTranslation('screens.auctionedPlayersInfo', language)}
+                </p>
+              </div>
+            </div>
+
+            {auctionPlayers.length === 0 ? (
+              <p className="text-purple-200">{getTranslation('screens.noAuctionedPlayers', language)}</p>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-4">
+                {auctionPlayers.map((player) => (
+                  <div
+                    key={player.winId}
+                    className="p-4 border border-purple-400/30 rounded-xl bg-purple-500/10 flex flex-col gap-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-semibold text-lg">{player.name}</p>
+                        <p className="text-sm text-purple-200">{player.position} • {player.club}</p>
+                        {player.wonAt && (
+                          <p className="text-xs text-purple-300 mt-1">
+                            {formatAuctionWeek(player.wonAt)
+                              ? `Semana do leilão: ${formatAuctionWeek(player.wonAt)}`
+                              : formatAuctionDate(player.wonAt)}
+                          </p>
+                        )}
+                        {player.wonAt && (
+                          <p className="text-xs text-purple-300">
+                            {formatAuctionDate(player.wonAt)}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-purple-300">PtsTU</p>
+                        <p className="text-2xl font-bold text-white">{player.usefulPoints.toFixed(1)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-purple-200">
+                      <span>{player.league}</span>
+                      <span>€{Math.round(player.value).toLocaleString()}</span>
+                    </div>
+                    <button
+                      onClick={() => handleMarkAuctionPlayerUsed(player.winId)}
+                      disabled={markingWin === player.winId}
+                      className="mt-2 w-full px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {markingWin === player.winId
+                        ? 'A atualizar...'
+                        : getTranslation('screens.markAsUsed', language)}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

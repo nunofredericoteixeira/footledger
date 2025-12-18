@@ -331,9 +331,9 @@ function MyLeague({ userId, onBack }: MyLeagueProps) {
 
       <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-10 opacity-10">
         <img
-          src="/ChatGPT Image 4_10_2025, 11_26_23.png"
+          src="/My_League.png"
           alt="Watermark"
-          className="w-96 h-96"
+          className="w-96 h-96 object-contain"
         />
       </div>
 

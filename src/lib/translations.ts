@@ -553,6 +553,54 @@ export const translations = {
       en: 'Budget',
       de: 'Budget'
     },
+    usefulPoints: {
+      pt: 'PtsTU',
+      es: 'PtsTU',
+      fr: 'PtsTU',
+      it: 'PtsTU',
+      en: 'Useful Points',
+      de: 'PtsTU'
+    },
+    currentRatio: {
+      pt: 'Rácio Atual',
+      es: 'Ratio Actual',
+      fr: 'Ratio Actuel',
+      it: 'Rapporto Attuale',
+      en: 'Current Ratio',
+      de: 'Aktueller Quotient'
+    },
+    auctionedPlayers: {
+      pt: 'Jogadores Leiloados',
+      es: 'Jugadores Subastados',
+      fr: 'Joueurs Aux Enchères',
+      it: 'Giocatori all\'Asta',
+      en: 'Auctioned Players',
+      de: 'Versteigerte Spieler'
+    },
+    auctionedPlayersInfo: {
+      pt: 'Cada jogador ganho em leilão pode ser usado uma vez. Enquanto não for usado, mantém-se como 24.º jogador e contribui com os seus PtsTU.',
+      es: 'Cada jugador ganado en subasta puede usarse una vez. Mientras no se use, permanece como 24.º jugador y suma sus PtsTU.',
+      fr: 'Chaque joueur gagné aux enchères peut être utilisé une fois. Tant qu\'il n\'est pas utilisé, il reste comme 24e joueur et ajoute ses PtsTU.',
+      it: 'Ogni giocatore vinto all\'asta può essere usato una volta. Finché non viene usato, rimane come 24º giocatore e aggiunge i suoi PtsTU.',
+      en: 'Each auctioned player can be used once. Until then, they stay as the 24th player and add their PtsTU.',
+      de: 'Jeder ersteigerte Spieler kann einmal eingesetzt werden. Bis dahin bleibt er als 24. Spieler und zählt mit seinen PtsTU.'
+    },
+    markAsUsed: {
+      pt: 'Marcar como usado',
+      es: 'Marcar como usado',
+      fr: 'Marquer comme utilisé',
+      it: 'Segna come usato',
+      en: 'Mark as used',
+      de: 'Als benutzt markieren'
+    },
+    noAuctionedPlayers: {
+      pt: 'Ainda não tens jogadores leiloados disponíveis.',
+      es: 'Todavía no tienes jugadores subastados disponibles.',
+      fr: 'Vous n\'avez pas encore de joueurs aux enchères disponibles.',
+      it: 'Non hai ancora giocatori all\'asta disponibili.',
+      en: 'You don\'t have any auctioned players available yet.',
+      de: 'Du hast noch keine versteigerten Spieler verfügbar.'
+    },
     selectYourTactic: {
       pt: 'Escolha a Sua Tática',
       es: 'Elige Tu Táctica',
