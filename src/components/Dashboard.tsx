@@ -34,6 +34,7 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const [hasTeam, setHasTeam] = useState(false);
   const [hasTactic, setHasTactic] = useState(false);
   const [hasPlayers, setHasPlayers] = useState(false);
+  const [playersLocked, setPlayersLocked] = useState(false);
   const { language, setLanguage } = useLanguage();
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string>('');
@@ -87,7 +88,7 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const checkUserSelections = async () => {
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('selected_team_id')
+      .select('selected_team_id, players_locked')
       .eq('id', userId)
       .maybeSingle();
 
@@ -103,6 +104,7 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
       .eq('user_id', userId);
 
     setHasTeam(!!profile?.selected_team_id);
+    setPlayersLocked(!!profile?.players_locked);
     setHasTactic(!!tacticSelection);
     setHasPlayers(!!playerSelections && playerSelections.length > 0);
   };
@@ -361,9 +363,9 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
 
           <button
             onClick={hasTactic ? onNavigateToPlayers : undefined}
-            disabled={!hasTactic || (!playersPeriod.isOpen && hasPlayers)}
+            disabled={!hasTactic || (!playersPeriod.isOpen && playersLocked)}
             className={`relative bg-black/60 backdrop-blur-md border-2 rounded-xl p-6 md:p-8 transition-all ${
-              hasTactic && (playersPeriod.isOpen || !hasPlayers)
+              hasTactic && (playersPeriod.isOpen || !playersLocked)
                 ? 'border-cyan-400 hover:bg-black/70 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/50'
                 : 'border-gray-600 opacity-60 cursor-not-allowed'
             }`}

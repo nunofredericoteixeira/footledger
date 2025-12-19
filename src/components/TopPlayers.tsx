@@ -16,6 +16,7 @@ interface PlayerStats {
   costPerPoint?: number;
   totalPoints: number;
   gamesPlayed: number;
+  averagePoints?: number;
   position: number;
   positionLabel?: string;
   league?: string;
@@ -28,6 +29,14 @@ function TopPlayers({ onBack }: TopPlayersProps) {
   const [selectedPosition, setSelectedPosition] = useState<string>('All');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const sortByAverage = (a: PlayerStats, b: PlayerStats) => {
+    const avgA = a.averagePoints ?? 0;
+    const avgB = b.averagePoints ?? 0;
+    if (avgB !== avgA) return avgB - avgA;
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+    return a.playerName.localeCompare(b.playerName);
+  };
 
   useEffect(() => {
     loadTopPlayers();
@@ -89,6 +98,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
         const perf = perfMap.get(p.name) || { total: 0, games: 0 };
         const value = p.value || 0;
         const costPerPoint = perf.total > 0 ? value / perf.total : undefined;
+        const averagePoints = perf.games > 0 ? perf.total / perf.games : 0;
         return {
           playerId: p.id,
           playerName: p.name,
@@ -97,20 +107,15 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           costPerPoint,
           totalPoints: perf.total,
           gamesPlayed: perf.games,
+          averagePoints,
           position: 0,
           positionLabel: p.position || undefined,
           league: p.league || undefined,
         };
       });
 
-      // Sort primarily by best cost per point (lower is better), fallback to total points desc, then name.
-      stats.sort((a, b) => {
-        const aCost = a.costPerPoint ?? Infinity;
-        const bCost = b.costPerPoint ?? Infinity;
-        if (aCost !== bCost) return aCost - bCost;
-        if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-        return a.playerName.localeCompare(b.playerName);
-      });
+      // Sort by average points per game (descending).
+      stats.sort(sortByAverage);
 
       const ranked = stats.map((p, idx) => ({ ...p, position: idx + 1 }));
       setPlayers(ranked);
@@ -192,7 +197,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
       <div className="max-w-6xl mx-auto px-4 pb-12 relative z-10">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-white mb-3">{getTranslation('screens.topPlayers', language)}</h1>
-          <p className="text-cyan-200 text-lg">Best performing players by total points</p>
+          <p className="text-cyan-200 text-lg">Ranked by average points per game</p>
         </div>
 
         {errorMsg && (
@@ -232,9 +237,12 @@ function TopPlayers({ onBack }: TopPlayersProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            {players
+            {[...players]
               .filter((p) => selectedPosition === 'All' || (p.positionLabel || 'Sem posição') === selectedPosition)
-              .map((player) => (
+              .sort(sortByAverage)
+              .map((player, idx) => {
+                const displayRank = idx + 1;
+                return (
               <div
                 key={player.playerId}
                 className={`
@@ -247,7 +255,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                 `}
               >
                 <div className="flex items-center gap-6">
-                  {getPositionBadge(player.position)}
+                  {getPositionBadge(displayRank)}
 
                   <div className="flex-1">
                     <div className="flex items-baseline gap-3 mb-1">
@@ -275,7 +283,7 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-cyan-200">
-                          Avg: <span className="text-white font-bold">{(player.totalPoints / Math.max(player.gamesPlayed, 1)).toFixed(2)}</span> pts/game
+                          Avg: <span className="text-white font-bold">{(player.averagePoints ?? 0).toFixed(2)}</span> pts/game
                         </span>
                       </div>
                       {player.costPerPoint !== undefined && (
@@ -297,7 +305,8 @@ function TopPlayers({ onBack }: TopPlayersProps) {
                   </div>
                 </div>
               </div>
-            ))}
+                );
+              })}
           </div>
         )}
       </div>
