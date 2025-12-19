@@ -28,8 +28,13 @@ interface AuctionRosterPlayer {
   club: string;
   position: string;
   value: number;
-  usefulPoints: number;
+  totalPoints: number;
   wonAt?: string | null;
+}
+
+interface AuctionContribution {
+  winId: string;
+  usefulPoints: number;
 }
 
 interface MyTeamProps {
@@ -42,6 +47,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const { language } = useLanguage();
   const [players, setPlayers] = useState<PlayerWithPoints[]>([]);
   const [auctionPlayers, setAuctionPlayers] = useState<AuctionRosterPlayer[]>([]);
+  const [auctionContributions, setAuctionContributions] = useState<AuctionContribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'total' | 'weekly' | 'position'>('position');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -176,7 +182,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
       const { data: auctionPoints } = await supabase
         .from('user_auction_useful_points')
-        .select('win_id, useful_points, player_name, position, club, league, player_value, won_at')
+        .select('win_id, total_points, player_name, position, club, league, player_value, won_at')
         .eq('user_id', userId)
         .order('won_at', { ascending: false });
 
@@ -187,11 +193,23 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         club: row.club || '',
         position: row.position || 'N/A',
         value: Number(row.player_value) || 0,
-        usefulPoints: Number(row.useful_points) || 0,
+        totalPoints: Number(row.total_points) || 0,
         wonAt: row.won_at
       }));
 
       setAuctionPlayers(rosterAuctionPlayers);
+
+      const { data: usedContributions } = await supabase
+        .from('user_auction_used_points')
+        .select('win_id, useful_points')
+        .eq('user_id', userId);
+
+      const formattedContributions: AuctionContribution[] = (usedContributions || []).map(row => ({
+        winId: row.win_id,
+        usefulPoints: Number(row.useful_points) || 0
+      }));
+
+      setAuctionContributions(formattedContributions);
     } catch (error) {
       console.error('Error loading player points:', error);
     } finally {
@@ -249,7 +267,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const lastWeekTotal = players.reduce((sum, p) => sum + p.last_week_points, 0);
   const totalUseful = players.reduce((sum, p) => sum + p.total_points_useful, 0);
   const weeklyUseful = players.reduce((sum, p) => sum + p.weekly_points_useful, 0);
-  const totalAuctionUseful = auctionPlayers.reduce((sum, p) => sum + p.usefulPoints, 0);
+  const totalAuctionUseful = auctionContributions.reduce((sum, entry) => sum + entry.usefulPoints, 0);
   const combinedUseful = totalUseful + totalAuctionUseful;
   const currentRatio = formatRatio(combinedUseful, initialBudget);
 
@@ -437,6 +455,43 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                     </td>
                   </tr>
                 ))}
+                {auctionPlayers.map((player, index) => (
+                  <tr
+                    key={`auction-${player.winId}`}
+                    className="border-b border-purple-400/10 bg-purple-500/5"
+                  >
+                    <td className="px-4 py-4 text-purple-200 font-semibold">
+                      {sortedPlayers.length + index + 1}
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-white font-semibold flex items-center gap-2">
+                        {player.name}
+                        <span className="text-xs text-purple-300 px-2 py-0.5 border border-purple-300/40 rounded-full">
+                          Leilão
+                        </span>
+                      </div>
+                      <div className="text-xs text-purple-200">€{(player.value / 1000000).toFixed(1)}M</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="px-2 py-1 rounded text-xs font-semibold border border-purple-300/40 text-purple-200">
+                        {player.position}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="text-purple-100">{player.club}</div>
+                      <div className="text-xs text-purple-300">{player.league}</div>
+                    </td>
+                    <td className="px-4 py-4 text-center text-purple-200 font-bold">—</td>
+                    <td className="px-4 py-4 text-center text-white font-bold">{player.totalPoints.toFixed(1)}</td>
+                    <td className="px-4 py-4 text-center text-purple-200 font-bold">—</td>
+                    <td className="px-4 py-4 text-center text-purple-200 font-bold">—</td>
+                    <td className="px-4 py-4 text-center">
+                      <div className="text-sm text-purple-300/80">
+                        Aguardando utilização
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -492,8 +547,8 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-purple-300">PtsTU</p>
-                        <p className="text-2xl font-bold text-white">{player.usefulPoints.toFixed(1)}</p>
+                        <p className="text-xs text-purple-300">PtsT</p>
+                        <p className="text-2xl font-bold text-white">{player.totalPoints.toFixed(1)}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-sm text-purple-200">

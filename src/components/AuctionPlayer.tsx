@@ -111,6 +111,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const [auctionWinners, setAuctionWinners] = useState<Record<string, string>>({});
   const [availableWeeks, setAvailableWeeks] = useState<{ label: string; start: string }[]>([]);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>('');
+  const [playerTotals, setPlayerTotals] = useState<Record<string, number>>({});
 
   const isAuctionEnded = (auction: Auction | null) => {
     if (!auction) return false;
@@ -165,6 +166,23 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
       setHasFootLegers(data.footlegers_token_verified || false);
       setNftVerified(!!(data.dragon_nft_name && data.dragon_nft_address && data.dragon_nft_number && data.dragon_nft_owner_address && data.footlegers_token_verified));
     }
+  };
+
+  const getPlayerTotalPoints = (auction?: Auction | null) => {
+    if (!auction) return null;
+    const mapped = playerTotals[auction.auction_player_id];
+    if (typeof mapped === 'number' && !Number.isNaN(mapped)) {
+      return mapped;
+    }
+    if (typeof auction.total_points === 'number' && !Number.isNaN(auction.total_points)) {
+      return auction.total_points;
+    }
+    return null;
+  };
+
+  const formatPoints = (value: number | null) => {
+    if (value === null || value === undefined) return '—';
+    return Number(value).toLocaleString();
   };
 
   const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
@@ -369,10 +387,27 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         setWinnerNames({});
         setAuctionWinners({});
       }
+
+      if (auctionsWithWeek.length > 0) {
+        const uniquePlayerIds = Array.from(new Set(auctionsWithWeek.map((auction) => auction.auction_player_id)));
+        const { data: totalsData } = await supabase
+          .from('auction_player_totals')
+          .select('auction_player_id, total_points')
+          .in('auction_player_id', uniquePlayerIds);
+
+        const totalsMap: Record<string, number> = {};
+        totalsData?.forEach((row) => {
+          totalsMap[row.auction_player_id] = Number(row.total_points) || 0;
+        });
+        setPlayerTotals(totalsMap);
+      } else {
+        setPlayerTotals({});
+      }
       setFallbackAuction(null);
     } else {
       setAuctions([]);
       await buildFallbackLeftBack();
+      setPlayerTotals({});
     }
     setLoading(false);
   };
@@ -576,6 +611,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
       : null;
 
+    const selectedPtsT = getPlayerTotalPoints(selectedAuction);
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-purple-900 to-pink-900 relative">
         <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
@@ -629,6 +666,10 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                 <div className="bg-purple-500/20 px-4 py-2 rounded-lg">
                   <p className="text-purple-200 text-sm">Value</p>
                   <p className="text-white font-bold">€{formatValue(player.value)}</p>
+                </div>
+                <div className="bg-purple-500/20 px-4 py-2 rounded-lg">
+                  <p className="text-purple-200 text-sm">PtsT</p>
+                  <p className="text-white font-bold">{formatPoints(selectedPtsT)}</p>
                 </div>
               </div>
               <div className="bg-purple-500/10 rounded-lg p-4 mb-6">
@@ -984,7 +1025,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
           )
         ) : (
           <>
-            {filteredAuctions.length === 0 ? (
+                {filteredAuctions.length === 0 ? (
               <div className="bg-black/60 backdrop-blur-md rounded-2xl p-12 border border-purple-400/30 text-center">
                 <Clock className="w-16 h-16 text-purple-400 mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-white mb-2">Sem leilões nesta semana</h2>
@@ -1001,6 +1042,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   ? winnerNames[winnerId] ||
                     (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
                   : null;
+                  const ptsT = getPlayerTotalPoints(auction);
                   return (
                     <div
                       key={auction.id}
@@ -1039,6 +1081,14 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                       <p className="text-purple-300 text-sm">Time Left</p>
                       <p className={`font-bold ${auctionEnded ? 'text-red-300' : 'text-purple-400'}`}>
                         {auctionEnded ? 'Finished' : getTimeRemaining(auction.end_date)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-purple-300 text-sm">PtsT</p>
+                      <p className="text-white font-bold text-xl">
+                        {formatPoints(ptsT)}
                       </p>
                     </div>
                   </div>
