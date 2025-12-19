@@ -41,7 +41,12 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
     if (error) {
       console.error('Error loading tactics:', error);
     } else {
-      setTactics(data || []);
+      const filtered = (data || []).filter(
+        (tactic) =>
+          tactic.position_groups && Object.keys(tactic.position_groups).length > 0 &&
+          tactic.position_requirements && Object.keys(tactic.position_requirements).length > 0
+      );
+      setTactics(filtered);
     }
     setLoading(false);
   };

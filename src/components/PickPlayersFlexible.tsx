@@ -189,7 +189,10 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
         resolvedBudget = teamValue;
       }
 
-      let tacticMeta: { position_groups: Record<string, PositionGroup> | null; position_requirements: Record<string, number> | null } | null = null;
+      let tacticMeta: {
+        position_groups: Record<string, PositionGroup> | null;
+        position_requirements: Record<string, number> | null;
+      } | null = null;
 
       if ((!nextGroups || Object.keys(nextGroups).length === 0) || !requirements) {
         const { data: tacticSelection } = await supabase
@@ -201,14 +204,36 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
         if (tacticSelection?.tactic_id) {
           const { data: tactic } = await supabase
             .from('tactics')
-            .select('position_groups, position_requirements')
+            .select('name, position_groups, position_requirements')
             .eq('id', tacticSelection.tactic_id)
             .maybeSingle();
 
           if (tactic) {
+            let tacticGroups = tactic.position_groups as Record<string, PositionGroup> | null;
+            let tacticRequirements = tactic.position_requirements as Record<string, number> | null;
+
+            if (
+              tactic.name &&
+              (!tacticGroups || Object.keys(tacticGroups).length === 0 || !tacticRequirements)
+            ) {
+              const { data: fallback } = await supabase
+                .from('tactics')
+                .select('position_groups, position_requirements')
+                .eq('name', tactic.name)
+                .not('position_groups', 'is', null)
+                .not('position_requirements', 'is', null)
+                .limit(1)
+                .maybeSingle();
+
+              if (fallback) {
+                tacticGroups = fallback.position_groups as Record<string, PositionGroup> | null;
+                tacticRequirements = fallback.position_requirements as Record<string, number> | null;
+              }
+            }
+
             tacticMeta = {
-              position_groups: tactic.position_groups as Record<string, PositionGroup> | null,
-              position_requirements: tactic.position_requirements as Record<string, number> | null
+              position_groups: tacticGroups,
+              position_requirements: tacticRequirements
             };
           }
         }
@@ -226,12 +251,13 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
         nextGroups = deriveGroupsFromRequirements(requirements);
       }
 
-      if (profile) {
-        setInitialBudget(resolvedBudget);
-        setIsLocked(profile.players_locked || false);
-        setPositionGroups(nextGroups);
-        console.log('Position groups set to:', nextGroups);
+      const lockedFlag = profile?.players_locked ?? false;
+      setInitialBudget(resolvedBudget);
+      setIsLocked(lockedFlag);
+      setPositionGroups(nextGroups);
+      console.log('Position groups set to:', nextGroups);
 
+      if (profile) {
         const updates: Record<string, unknown> = {};
         if (!profile.position_groups && nextGroups) {
           updates.position_groups = nextGroups;
