@@ -357,6 +357,14 @@ export const translations = {
       en: 'Points',
       de: 'Punkte'
     },
+    date: {
+      pt: 'Data',
+      es: 'Fecha',
+      fr: 'Date',
+      it: 'Data',
+      en: 'Date',
+      de: 'Datum'
+    },
     value: {
       pt: 'Valor',
       es: 'Valor',
@@ -600,6 +608,30 @@ export const translations = {
       it: 'Non hai ancora giocatori all\'asta disponibili.',
       en: 'You don\'t have any auctioned players available yet.',
       de: 'Du hast noch keine versteigerten Spieler verfügbar.'
+    },
+    auctionHistoryTitle: {
+      pt: 'Histórico de PtsTU Leiloados',
+      es: 'Historial de PtsTU Subastados',
+      fr: 'Historique des PtsTU Aux Enchères',
+      it: 'Storico PtsTU Asta',
+      en: 'Auction PtsTU History',
+      de: 'PtsTU-Versteigerungshistorie'
+    },
+    auctionHistoryInfo: {
+      pt: 'Todos os jogadores leiloados usados aparecem aqui com a semana e os pontos creditados.',
+      es: 'Todos los jugadores subastados usados aparecen aquí con la semana y los puntos acreditados.',
+      fr: 'Tous les joueurs aux enchères utilisés apparaissent ici avec la semaine et les points crédités.',
+      it: 'Tutti i giocatori d’asta usati compaiono qui con la settimana e i punti accreditati.',
+      en: 'All auctioned players you have used appear here with the week and credited points.',
+      de: 'Alle eingesetzten versteigerten Spieler erscheinen hier mit Woche und gutgeschriebenen Punkten.'
+    },
+    noAuctionHistory: {
+      pt: 'Ainda não usaste nenhum jogador leiloado.',
+      es: 'Todavía no has usado ningún jugador subastado.',
+      fr: 'Vous n\'avez pas encore utilisé de joueur aux enchères.',
+      it: 'Non hai ancora usato giocatori d’asta.',
+      en: 'You haven’t used any auctioned players yet.',
+      de: 'Du hast noch keine versteigerten Spieler eingesetzt.'
     },
     selectYourTactic: {
       pt: 'Escolha a Sua Tática',

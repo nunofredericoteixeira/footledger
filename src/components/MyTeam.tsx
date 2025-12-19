@@ -38,6 +38,19 @@ interface AuctionContribution {
   usefulPoints: number;
 }
 
+interface AuctionHistoryEntry {
+  winId: string;
+  name: string;
+  position: string;
+  club: string;
+  league: string;
+  value: number;
+  usedDate: string;
+  weekStart: string;
+  weekEnd: string;
+  usefulPoints: number;
+}
+
 interface MyTeamProps {
   userId: string;
   onComplete: () => void;
@@ -49,6 +62,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
   const [players, setPlayers] = useState<PlayerWithPoints[]>([]);
   const [auctionPlayers, setAuctionPlayers] = useState<AuctionRosterPlayer[]>([]);
   const [auctionContributions, setAuctionContributions] = useState<AuctionContribution[]>([]);
+  const [auctionHistory, setAuctionHistory] = useState<AuctionHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'total' | 'weekly' | 'position'>('position');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -105,6 +119,29 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
       return `${avg.toFixed(1)} / ${Math.round(total).toLocaleString()}`;
     }
     return `${Math.round(total).toLocaleString()}`;
+  };
+
+  const formatHistoryWeek = (weekStart?: string | null, weekEnd?: string | null) => {
+    if (!weekStart || !weekEnd) return '—';
+    const start = new Date(weekStart);
+    const end = new Date(weekEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '—';
+    const formatter = new Intl.DateTimeFormat(language === 'pt' ? 'pt-PT' : 'en-US', {
+      day: '2-digit',
+      month: 'short'
+    });
+    return `${formatter.format(start)} - ${formatter.format(end)}`;
+  };
+
+  const formatHistoryDate = (value?: string) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString(language === 'pt' ? 'pt-PT' : 'en-US', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   useEffect(() => {
@@ -212,17 +249,32 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
       setAuctionPlayers(rosterAuctionPlayers);
 
-      const { data: usedContributions } = await supabase
+      const { data: usedRows } = await supabase
         .from('user_auction_used_points')
-        .select('win_id, useful_points')
-        .eq('user_id', userId);
+        .select('win_id, player_name, position, club, league, player_value, used_date, week_start, week_end, useful_points')
+        .eq('user_id', userId)
+        .order('used_date', { ascending: false });
 
-      const formattedContributions: AuctionContribution[] = (usedContributions || []).map(row => ({
+      const formattedContributions: AuctionContribution[] = (usedRows || []).map(row => ({
         winId: row.win_id,
         usefulPoints: Number(row.useful_points) || 0
       }));
 
+      const historyEntries: AuctionHistoryEntry[] = (usedRows || []).map(row => ({
+        winId: row.win_id,
+        name: row.player_name,
+        position: row.position || 'N/A',
+        club: row.club || '',
+        league: row.league || '',
+        value: Number(row.player_value) || 0,
+        usedDate: row.used_date || '',
+        weekStart: row.week_start || '',
+        weekEnd: row.week_end || '',
+        usefulPoints: Number(row.useful_points) || 0
+      }));
+
       setAuctionContributions(formattedContributions);
+      setAuctionHistory(historyEntries);
     } catch (error) {
       console.error('Error loading player points:', error);
     } finally {
@@ -579,6 +631,63 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-10">
+          <div className="bg-black/40 backdrop-blur-md border border-purple-400/40 rounded-2xl p-6">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  {getTranslation('screens.auctionHistoryTitle', language)}
+                </h2>
+                <p className="text-purple-200 text-sm">
+                  {getTranslation('screens.auctionHistoryInfo', language)}
+                </p>
+              </div>
+            </div>
+
+            {auctionHistory.length === 0 ? (
+              <p className="text-purple-200">{getTranslation('screens.noAuctionHistory', language)}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left text-sm text-purple-300 border-b border-purple-400/20">
+                      <th className="py-3 px-2">Semana</th>
+                      <th className="py-3 px-2">{getTranslation('common.player', language)}</th>
+                      <th className="py-3 px-2">{getTranslation('common.team', language)}</th>
+                      <th className="py-3 px-2">{getTranslation('screens.position', language)}</th>
+                      <th className="py-3 px-2 text-center">PtsTU</th>
+                      <th className="py-3 px-2 text-center">{getTranslation('common.date', language) || 'Data'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auctionHistory.map((entry) => (
+                      <tr
+                        key={entry.winId}
+                        className="border-b border-purple-400/10 text-purple-100 text-sm"
+                      >
+                        <td className="py-3 px-2">{formatHistoryWeek(entry.weekStart, entry.weekEnd)}</td>
+                        <td className="py-3 px-2">
+                          <div className="font-semibold text-white">{entry.name}</div>
+                          <div className="text-xs text-purple-300">€{(entry.value / 1000000).toFixed(1)}M</div>
+                        </td>
+                        <td className="py-3 px-2">
+                          <div>{entry.club}</div>
+                          <div className="text-xs text-purple-300">{entry.league}</div>
+                        </td>
+                        <td className="py-3 px-2">{entry.position}</td>
+                        <td className="py-3 px-2 text-center font-bold text-white">
+                          {entry.usefulPoints > 0 ? `+${entry.usefulPoints.toFixed(1)}` : entry.usefulPoints.toFixed(1)}
+                        </td>
+                        <td className="py-3 px-2 text-center">{formatHistoryDate(entry.usedDate)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
