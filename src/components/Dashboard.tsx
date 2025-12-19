@@ -39,6 +39,13 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string>('');
   const [showWelcome, setShowWelcome] = useState(true);
+  const playersSelectionOpen = playersPeriod.isOpen || !playersLocked;
+  const canNavigateToPlayers = hasTactic && playersSelectionOpen;
+  const playersStatusMessage = playersPeriod.isOpen
+    ? playersPeriod.message
+    : !playersLocked
+      ? getTranslation('dashboard.initialSquadOpen', language)
+      : playersPeriod.message;
 
   useEffect(() => {
     checkUserSelections();
@@ -362,10 +369,10 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
           </button>
 
           <button
-            onClick={hasTactic ? onNavigateToPlayers : undefined}
-            disabled={!hasTactic || (!playersPeriod.isOpen && playersLocked)}
+            onClick={canNavigateToPlayers ? onNavigateToPlayers : undefined}
+            disabled={!canNavigateToPlayers}
             className={`relative bg-black/60 backdrop-blur-md border-2 rounded-xl p-6 md:p-8 transition-all ${
-              hasTactic && (playersPeriod.isOpen || !playersLocked)
+              canNavigateToPlayers
                 ? 'border-cyan-400 hover:bg-black/70 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/50'
                 : 'border-gray-600 opacity-60 cursor-not-allowed'
             }`}
@@ -388,19 +395,19 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
             </p>
 
             <div className={`flex items-start gap-2 px-3 py-2 rounded-lg ${
-              playersPeriod.isOpen ? 'bg-green-500/20' : 'bg-red-500/20'
+              playersSelectionOpen ? 'bg-green-500/20' : 'bg-red-500/20'
             }`}>
-              {playersPeriod.isOpen ? (
+              {playersSelectionOpen ? (
                 <Clock className="w-4 h-4 md:w-5 md:h-5 text-green-300 animate-pulse flex-shrink-0 mt-0.5" />
               ) : (
                 <Lock className="w-4 h-4 md:w-5 md:h-5 text-red-300 flex-shrink-0 mt-0.5" />
               )}
               <div className="flex-1 min-w-0">
-                <p className={`font-bold text-xs md:text-sm ${playersPeriod.isOpen ? 'text-green-300' : 'text-red-300'}`}>
-                  {playersPeriod.isOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
+                <p className={`font-bold text-xs md:text-sm ${playersSelectionOpen ? 'text-green-300' : 'text-red-300'}`}>
+                  {playersSelectionOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
                 </p>
-                <p className={`text-xs ${playersPeriod.isOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
-                  {playersPeriod.message}
+                <p className={`text-xs ${playersSelectionOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
+                  {playersStatusMessage}
                 </p>
               </div>
             </div>

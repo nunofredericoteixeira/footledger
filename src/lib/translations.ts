@@ -227,6 +227,14 @@ export const translations = {
       en: 'Closed',
       de: 'Geschlossen'
     },
+    initialSquadOpen: {
+      pt: 'Aberto até travares o teu plantel inicial',
+      es: 'Abierto hasta que cierres tu plantilla inicial',
+      fr: 'Ouvert jusqu’à verrouiller votre effectif initial',
+      it: 'Aperto finché non blocchi la rosa iniziale',
+      en: 'Open until you lock your initial squad',
+      de: 'Offen bis du deinen Anfangskader sperrst'
+    },
     completed: {
       pt: 'Concluído',
       es: 'Completado',

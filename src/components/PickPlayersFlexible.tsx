@@ -168,6 +168,8 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       console.log('Profile data:', profile);
 
       let resolvedBudget = profile?.team_value ?? teamValue;
+      let nextGroups = (profile?.position_groups as Record<string, PositionGroup>) || null;
+      let requirements = profile?.position_requirements as Record<string, number> | null;
 
       // Fallback to the selected team's value if the profile budget is missing.
       if ((!resolvedBudget || resolvedBudget === 0) && profile?.selected_team_id) {
@@ -187,25 +189,67 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
         resolvedBudget = teamValue;
       }
 
+      let tacticMeta: { position_groups: Record<string, PositionGroup> | null; position_requirements: Record<string, number> | null } | null = null;
+
+      if ((!nextGroups || Object.keys(nextGroups).length === 0) || !requirements) {
+        const { data: tacticSelection } = await supabase
+          .from('user_tactic_selection')
+          .select('tactic_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (tacticSelection?.tactic_id) {
+          const { data: tactic } = await supabase
+            .from('tactics')
+            .select('position_groups, position_requirements')
+            .eq('id', tacticSelection.tactic_id)
+            .maybeSingle();
+
+          if (tactic) {
+            tacticMeta = {
+              position_groups: tactic.position_groups as Record<string, PositionGroup> | null,
+              position_requirements: tactic.position_requirements as Record<string, number> | null
+            };
+          }
+        }
+      }
+
+      if ((!nextGroups || Object.keys(nextGroups).length === 0) && tacticMeta?.position_groups) {
+        nextGroups = tacticMeta.position_groups;
+      }
+
+      if (!requirements && tacticMeta?.position_requirements) {
+        requirements = tacticMeta.position_requirements;
+      }
+
+      if ((!nextGroups || Object.keys(nextGroups).length === 0) && requirements) {
+        nextGroups = deriveGroupsFromRequirements(requirements);
+      }
+
       if (profile) {
         setInitialBudget(resolvedBudget);
         setIsLocked(profile.players_locked || false);
-        let nextGroups = profile.position_groups as Record<string, PositionGroup> | null;
+        setPositionGroups(nextGroups);
+        console.log('Position groups set to:', nextGroups);
 
-        if ((!nextGroups || Object.keys(nextGroups).length === 0) && profile.position_requirements) {
-          nextGroups = deriveGroupsFromRequirements(profile.position_requirements as Record<string, number>);
+        const updates: Record<string, unknown> = {};
+        if (!profile.position_groups && nextGroups) {
+          updates.position_groups = nextGroups;
+        }
+        if (!profile.position_requirements && requirements) {
+          updates.position_requirements = requirements;
+        }
+
+        if (Object.keys(updates).length > 0) {
           try {
             await supabase
               .from('user_profiles')
-              .update({ position_groups: nextGroups })
+              .update(updates)
               .eq('id', userId);
           } catch (groupErr) {
-            console.error('Failed to persist derived position groups:', groupErr);
+            console.error('Failed to persist derived position data:', groupErr);
           }
         }
-
-        setPositionGroups(nextGroups);
-        console.log('Position groups set to:', nextGroups);
       }
 
       const { data: selections } = await supabase
