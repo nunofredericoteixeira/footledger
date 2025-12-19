@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, Settings as SettingsIcon, Mail, Lock, Eye, EyeOff, Download } from 'lucide-react';
+import { ChevronLeft, Settings as SettingsIcon, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../lib/LanguageContext';
 import { getTranslation } from '../lib/translations';
@@ -117,33 +117,6 @@ function Settings({ userId, onBack }: SettingsProps) {
             <label className="block text-gray-300 mb-2 font-semibold">Email</label>
             <div className="bg-gray-800/50 border border-gray-600 rounded-lg px-4 py-3">
               <p className="text-white">{email}</p>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-700 pt-8 mb-8">
-            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Download className="w-5 h-5" />
-              Como Copiar a Aplicação
-            </h3>
-            <div className="bg-gray-800/50 border border-gray-600 rounded-lg p-6 space-y-4">
-              <p className="text-gray-300">
-                Para executar localmente, copia manualmente estes ficheiros do Bolt.new:
-              </p>
-              <div className="space-y-2 text-sm text-gray-300">
-                <p className="font-bold text-white">Essenciais:</p>
-                <ul className="list-disc list-inside space-y-1 ml-4">
-                  <li><code className="bg-gray-700 px-2 py-0.5 rounded">.env</code> (credenciais)</li>
-                  <li><code className="bg-gray-700 px-2 py-0.5 rounded">package.json</code></li>
-                  <li><code className="bg-gray-700 px-2 py-0.5 rounded">import-all-performance-data.js</code></li>
-                  <li>Pasta <code className="bg-gray-700 px-2 py-0.5 rounded">src/</code> completa</li>
-                </ul>
-                <p className="mt-4 text-gray-400 italic">
-                  Depois: <code className="bg-gray-700 px-2 py-0.5 rounded">npm install</code> e <code className="bg-gray-700 px-2 py-0.5 rounded">npm run dev</code>
-                </p>
-                <p className="mt-4 text-blue-300">
-                  Ver <code className="bg-gray-700 px-2 py-0.5 rounded">COMO_COPIAR_PROJETO.md</code> para instruções completas
-                </p>
-              </div>
             </div>
           </div>
 

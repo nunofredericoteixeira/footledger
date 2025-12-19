@@ -111,7 +111,7 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
   const [auctionWinners, setAuctionWinners] = useState<Record<string, string>>({});
   const [availableWeeks, setAvailableWeeks] = useState<{ label: string; start: string }[]>([]);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>('');
-  const [playerTotals, setPlayerTotals] = useState<Record<string, number>>({});
+  const [playerTotals, setPlayerTotals] = useState<Record<string, { totalPoints: number; gamesPlayed: number }>>({});
 
   const isAuctionEnded = (auction: Auction | null) => {
     if (!auction) return false;
@@ -168,21 +168,26 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
     }
   };
 
-  const getPlayerTotalPoints = (auction?: Auction | null) => {
-    if (!auction) return null;
-    const mapped = playerTotals[auction.auction_player_id];
-    if (typeof mapped === 'number' && !Number.isNaN(mapped)) {
-      return mapped;
-    }
-    if (typeof auction.total_points === 'number' && !Number.isNaN(auction.total_points)) {
-      return auction.total_points;
-    }
-    return null;
+  const getPlayerStats = (auction?: Auction | null) => {
+    if (!auction) return { total: null, games: null };
+    const stats = playerTotals[auction.auction_player_id];
+    const total = stats?.totalPoints ?? auction.total_points ?? null;
+    const games = stats?.gamesPlayed ?? auction.games_played ?? null;
+    return { total, games };
   };
 
-  const formatPoints = (value: number | null) => {
+  const formatPointsValue = (value: number | null) => {
     if (value === null || value === undefined) return '—';
     return Number(value).toLocaleString();
+  };
+
+  const formatAvgPtsLabel = (total: number | null, games: number | null) => {
+    if (total === null || total === undefined) return '—';
+    const avg = games && games > 0 ? total / games : null;
+    if (avg !== null) {
+      return `${avg.toFixed(1)} / ${formatPointsValue(total)}`;
+    }
+    return formatPointsValue(total);
   };
 
   const fetchAll = async <T,>(table: string, columns: string): Promise<T[]> => {
@@ -392,12 +397,15 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         const uniquePlayerIds = Array.from(new Set(auctionsWithWeek.map((auction) => auction.auction_player_id)));
         const { data: totalsData } = await supabase
           .from('auction_player_totals')
-          .select('auction_player_id, total_points')
+          .select('auction_player_id, total_points, games_played')
           .in('auction_player_id', uniquePlayerIds);
 
-        const totalsMap: Record<string, number> = {};
+        const totalsMap: Record<string, { totalPoints: number; gamesPlayed: number }> = {};
         totalsData?.forEach((row) => {
-          totalsMap[row.auction_player_id] = Number(row.total_points) || 0;
+          totalsMap[row.auction_player_id] = {
+            totalPoints: Number(row.total_points) || 0,
+            gamesPlayed: Number(row.games_played) || 0
+          };
         });
         setPlayerTotals(totalsMap);
       } else {
@@ -611,7 +619,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
         (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
       : null;
 
-    const selectedPtsT = getPlayerTotalPoints(selectedAuction);
+    const selectedStats = getPlayerStats(selectedAuction);
+    const selectedPtsLabel = formatAvgPtsLabel(selectedStats.total, selectedStats.games);
 
     return (
       <div className="min-h-screen bg-gradient-to-b from-black via-purple-900 to-pink-900 relative">
@@ -668,8 +677,8 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   <p className="text-white font-bold">€{formatValue(player.value)}</p>
                 </div>
                 <div className="bg-purple-500/20 px-4 py-2 rounded-lg">
-                  <p className="text-purple-200 text-sm">PtsT</p>
-                  <p className="text-white font-bold">{formatPoints(selectedPtsT)}</p>
+                  <p className="text-purple-200 text-sm">Avg./PtsT</p>
+                  <p className="text-white font-bold">{selectedPtsLabel}</p>
                 </div>
               </div>
               <div className="bg-purple-500/10 rounded-lg p-4 mb-6">
@@ -731,9 +740,9 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   </div>
                 )}
 
-                {auctionEnded && winnerLabel && (
+                {auctionEnded && (
                   <div className="bg-red-500/20 border border-red-500 text-red-100 px-4 py-3 rounded-lg text-sm mb-4">
-                    Leilão Terminado • Vencedor: {winnerLabel}
+                    Leilão Terminado • {winnerLabel ? `Vencedor: ${winnerLabel}` : 'No Bids'}
                   </div>
                 )}
 
@@ -1042,7 +1051,9 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   ? winnerNames[winnerId] ||
                     (winnerId === 'ee0ca527-b03c-459f-92fd-4d4a9d129faa' ? 'GiniusMind' : `User ${winnerId.slice(0, 6)}`)
                   : null;
-                  const ptsT = getPlayerTotalPoints(auction);
+                  const stats = getPlayerStats(auction);
+                  const avgLabel = formatAvgPtsLabel(stats.total, stats.games);
+                  const displayWinner = auctionEnded ? (winnerLabel ?? 'No Bids') : null;
                   return (
                     <div
                       key={auction.id}
@@ -1086,9 +1097,9 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                   </div>
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <p className="text-purple-300 text-sm">PtsT</p>
+                      <p className="text-purple-300 text-sm">Avg./PtsT</p>
                       <p className="text-white font-bold text-xl">
-                        {formatPoints(ptsT)}
+                        {avgLabel}
                       </p>
                     </div>
                   </div>
@@ -1105,9 +1116,9 @@ export default function AuctionPlayer({ userId, onBack }: AuctionPlayerProps) {
                     {auctionEnded ? 'Leilão Terminado' : 'Place Bid'}
                   </button>
 
-                  {winnerLabel && (
+                  {displayWinner && (
                     <p className="text-red-200 text-sm text-center mt-3">
-                      Vencedor: {winnerLabel}
+                      {winnerLabel ? `Vencedor: ${winnerLabel}` : displayWinner}
                     </p>
                   )}
                 </div>

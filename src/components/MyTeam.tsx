@@ -29,6 +29,7 @@ interface AuctionRosterPlayer {
   position: string;
   value: number;
   totalPoints: number;
+  gamesPlayed: number;
   wonAt?: string | null;
 }
 
@@ -93,6 +94,17 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
       month: 'short'
     });
     return `${formatter.format(start)} - ${formatter.format(end)}`;
+  };
+
+  const formatAuctionAvgText = (player: AuctionRosterPlayer) => {
+    const total = Number(player.totalPoints) || 0;
+    const games = Number(player.gamesPlayed) || 0;
+    if (total === 0 && games === 0) return '—';
+    if (games > 0) {
+      const avg = total / games;
+      return `${avg.toFixed(1)} / ${Math.round(total).toLocaleString()}`;
+    }
+    return `${Math.round(total).toLocaleString()}`;
   };
 
   useEffect(() => {
@@ -182,7 +194,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
 
       const { data: auctionPoints } = await supabase
         .from('user_auction_useful_points')
-        .select('win_id, total_points, player_name, position, club, league, player_value, won_at')
+        .select('win_id, total_points, games_played, player_name, position, club, league, player_value, won_at')
         .eq('user_id', userId)
         .order('won_at', { ascending: false });
 
@@ -194,6 +206,7 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
         position: row.position || 'N/A',
         value: Number(row.player_value) || 0,
         totalPoints: Number(row.total_points) || 0,
+        gamesPlayed: Number(row.games_played) || 0,
         wonAt: row.won_at
       }));
 
@@ -547,8 +560,8 @@ export default function MyTeam({ userId, onComplete, onBack }: MyTeamProps) {
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-purple-300">PtsT</p>
-                        <p className="text-2xl font-bold text-white">{player.totalPoints.toFixed(1)}</p>
+                        <p className="text-xs text-purple-300">Avg./PtsT</p>
+                        <p className="text-2xl font-bold text-white">{formatAuctionAvgText(player)}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-sm text-purple-200">
