@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Check, Lock, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase, type PositionGroup } from '../lib/supabase';
 
@@ -32,6 +32,37 @@ const POSITION_SHORT_MAP: Record<string, string> = {
   'Right Winger': 'RW',
   'Centre-Forward': 'CF',
   'Second Striker': 'SS',
+};
+
+const DEFAULT_GROUP_LABELS: Record<string, string> = {
+  GK: 'Goalkeepers',
+  CB: 'Centre-Backs',
+  LB: 'Left-Backs',
+  RB: 'Right-Backs',
+  DM: 'Defensive Midfield',
+  CM: 'Central Midfield',
+  AM: 'Attacking Midfield',
+  LM: 'Left Midfield',
+  RM: 'Right Midfield',
+  LW: 'Left Wingers',
+  RW: 'Right Wingers',
+  CF: 'Centre-Forwards',
+  SS: 'Second Strikers'
+};
+
+const deriveGroupsFromRequirements = (requirements: Record<string, number>): Record<string, PositionGroup> => {
+  const result: Record<string, PositionGroup> = {};
+
+  Object.entries(requirements).forEach(([shortCode, count]) => {
+    if (!count) return;
+    const groupName = DEFAULT_GROUP_LABELS[shortCode] || shortCode;
+    result[groupName] = {
+      positions: [shortCode],
+      count
+    };
+  });
+
+  return result;
 };
 
 const POSITION_EMOJI_MAP: Record<string, string> = {
@@ -72,7 +103,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     checkTacticSelection();
     loadPlayers();
     loadUserSelections();
-  }, [userId]);
+  }, [checkTacticSelection, loadPlayers, loadUserSelections]);
 
   useEffect(() => {
     // Keep local budget in sync if parent updates the team value (e.g. after team selection).
@@ -82,7 +113,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     }
   }, [teamValue, selectedPlayers.length]);
 
-  const checkTacticSelection = async () => {
+  const checkTacticSelection = useCallback(async () => {
     const { data } = await supabase
       .from('user_tactic_selection')
       .select('id')
@@ -90,9 +121,9 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       .maybeSingle();
 
     setHasTactic(!!data);
-  };
+  }, [userId]);
 
-  const loadPlayers = async () => {
+  const loadPlayers = useCallback(async () => {
     setLoading(true);
     try {
       let allData: Player[] = [];
@@ -124,13 +155,13 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadUserSelections = async () => {
+  const loadUserSelections = useCallback(async () => {
     try {
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('team_value, players_locked, position_groups, selected_team_id')
+        .select('team_value, players_locked, position_groups, selected_team_id, position_requirements')
         .eq('id', userId)
         .maybeSingle();
 
@@ -159,8 +190,22 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       if (profile) {
         setInitialBudget(resolvedBudget);
         setIsLocked(profile.players_locked || false);
-        setPositionGroups(profile.position_groups);
-        console.log('Position groups set to:', profile.position_groups);
+        let nextGroups = profile.position_groups as Record<string, PositionGroup> | null;
+
+        if ((!nextGroups || Object.keys(nextGroups).length === 0) && profile.position_requirements) {
+          nextGroups = deriveGroupsFromRequirements(profile.position_requirements as Record<string, number>);
+          try {
+            await supabase
+              .from('user_profiles')
+              .update({ position_groups: nextGroups })
+              .eq('id', userId);
+          } catch (groupErr) {
+            console.error('Failed to persist derived position groups:', groupErr);
+          }
+        }
+
+        setPositionGroups(nextGroups);
+        console.log('Position groups set to:', nextGroups);
       }
 
       const { data: selections } = await supabase
@@ -189,7 +234,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     } catch (err) {
       console.error('Error loading user selections:', err);
     }
-  };
+  }, [teamValue, userId]);
 
   const groupCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -353,9 +398,10 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       setIsLocked(false);
       setSuccess(false);
       alert('Squad unlocked. You can select players again.');
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error unlocking squad:', err);
-      alert('Failed to unlock squad: ' + err.message);
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      alert('Failed to unlock squad: ' + message);
     } finally {
       setUnlocking(false);
     }
@@ -371,7 +417,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     return `€${(value / 1000).toFixed(0)}K`;
   };
 
-  const getPlayersForGroup = (groupName: string) => {
+  const getPlayersForGroup = useCallback((groupName: string) => {
     if (!positionGroups) return [];
     const group = positionGroups[groupName];
     if (!group) return [];
@@ -381,9 +427,9 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     ).filter(Boolean);
 
     return allPlayers.filter(p => allowedPositions.includes(p.position));
-  };
+  }, [allPlayers, positionGroups]);
 
-  const getSelectedPlayersForGroup = (groupName: string) => {
+  const getSelectedPlayersForGroup = useCallback((groupName: string) => {
     if (!positionGroups) return [];
     const group = positionGroups[groupName];
     if (!group) return [];
@@ -393,7 +439,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
     ).filter(Boolean);
 
     return selectedPlayers.filter(p => allowedPositions.includes(p.position));
-  };
+  }, [positionGroups, selectedPlayers]);
 
   const filteredModalPlayers = useMemo(() => {
     if (!selectedGroup) return [];
@@ -406,7 +452,7 @@ export default function PickPlayersFlexible({ userId, teamValue, onComplete, onB
       player.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       player.club.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [selectedGroup, allPlayers, searchQuery, positionGroups]);
+  }, [selectedGroup, searchQuery, getPlayersForGroup]);
 
   const getGroupEmoji = (groupName: string) => {
     if (!positionGroups) return '⚽';
