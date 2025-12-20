@@ -20,17 +20,7 @@ export default function PickTeam({ userId, onComplete }: PickTeamProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
-
-  const checkIfLocked = () => {
-    const now = new Date();
-    const unlockDate = new Date('2025-01-01T00:00:00');
-    return now < unlockDate;
-  };
-
-  useEffect(() => {
-    setIsLocked(checkIfLocked());
-  }, []);
+  const [playersLocked, setPlayersLocked] = useState(false);
 
   useEffect(() => {
     loadTeams();
@@ -55,8 +45,8 @@ export default function PickTeam({ userId, onComplete }: PickTeamProps) {
   };
 
   const handleSave = async () => {
-    if (isLocked) {
-      setError('Team selection is locked until January 1st, 2025');
+    if (playersLocked) {
+      setError('Team selection is locked after finalizing your squad.');
       return;
     }
 
@@ -164,13 +154,13 @@ export default function PickTeam({ userId, onComplete }: PickTeamProps) {
             <p className="text-cyan-200">Choose your team to get started</p>
           </div>
 
-          {isLocked && (
+          {playersLocked && (
             <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-4">
               <div className="flex items-center gap-3">
                 <Lock className="w-6 h-6 text-yellow-400" />
                 <div>
                   <div className="text-yellow-400 font-bold">Team Selection Locked</div>
-                  <div className="text-yellow-200 text-sm">Team selection will be available starting January 1st, 2025</div>
+                  <div className="text-yellow-200 text-sm">You finalized your 23-player squad, so team changes are closed.</div>
                 </div>
               </div>
             </div>
@@ -322,15 +312,15 @@ export default function PickTeam({ userId, onComplete }: PickTeamProps) {
 
               <button
                 onClick={handleSave}
-                disabled={saving || !selectedTeamId || isLocked}
+                disabled={saving || !selectedTeamId || playersLocked}
                 className="w-full py-4 px-4 bg-cyan-400 text-blue-900 rounded-lg hover:bg-cyan-300 transition-all shadow-lg hover:shadow-2xl disabled:bg-gray-600 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center gap-2"
               >
                 {saving ? (
                   'Saving...'
-                ) : isLocked ? (
+                ) : playersLocked ? (
                   <>
                     <Lock className="w-5 h-5" />
-                    Locked until Jan 1st, 2025
+                    Squad Locked
                   </>
                 ) : (
                   <>
