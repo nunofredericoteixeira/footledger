@@ -227,6 +227,14 @@ export const translations = {
       en: 'Closed',
       de: 'Geschlossen'
     },
+    stageLocked: {
+      pt: 'Etapa concluída',
+      es: 'Etapa completada',
+      fr: 'Étape terminée',
+      it: 'Fase completata',
+      en: 'Stage locked',
+      de: 'Abschnitt abgeschlossen'
+    },
     initialSquadOpen: {
       pt: 'Aberto até travares o teu plantel inicial',
       es: 'Abierto hasta que cierres tu plantilla inicial',
@@ -234,6 +242,30 @@ export const translations = {
       it: 'Aperto finché non blocchi la rosa iniziale',
       en: 'Open until you lock your initial squad',
       de: 'Offen bis du deinen Anfangskader sperrst'
+    },
+    teamLockedMessage: {
+      pt: 'Já escolheste a tua equipa. Contacta o suporte se precisares de alterar.',
+      es: 'Ya elegiste tu equipo. Contacta con soporte si necesitas cambiarlo.',
+      fr: 'Vous avez déjà choisi votre équipe. Contactez le support pour la modifier.',
+      it: 'Hai già scelto la tua squadra. Contatta il supporto per modificarla.',
+      en: 'You already picked your team. Contact support if you need changes.',
+      de: 'Du hast dein Team bereits gewählt. Kontaktiere den Support für Änderungen.'
+    },
+    tacticLockedMessage: {
+      pt: 'Já escolheste o sistema tático. Contacta o suporte para alterar.',
+      es: 'Ya elegiste el sistema táctico. Contacta con soporte para cambiarlo.',
+      fr: 'Vous avez déjà choisi le système tactique. Contactez le support pour le modifier.',
+      it: 'Hai già scelto il sistema tattico. Contatta il supporto per modificarlo.',
+      en: 'You already chose the tactical system. Contact support to change it.',
+      de: 'Du hast dein Taktiksystem bereits gewählt. Kontaktiere den Support für Änderungen.'
+    },
+    squadLockedMessage: {
+      pt: 'Plantel de 23 jogadores já fechado.',
+      es: 'Plantilla de 23 jugadores ya cerrada.',
+      fr: 'Effectif de 23 joueurs déjà verrouillé.',
+      it: 'Rosa di 23 giocatori già bloccata.',
+      en: '23-player squad already locked.',
+      de: '23-Spieler-Kader bereits gesperrt.'
     },
     completed: {
       pt: 'Concluído',

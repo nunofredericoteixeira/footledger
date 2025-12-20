@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase, type Tactic } from '../lib/supabase';
-import { CheckCircle2, Search, Shield } from 'lucide-react';
+import { CheckCircle2, Search, Shield, Lock } from 'lucide-react';
+import { getTranslation } from '../lib/translations';
+import { useLanguage } from '../lib/LanguageContext';
 
 type PickTacticProps = {
   userId: string;
@@ -8,28 +10,34 @@ type PickTacticProps = {
 };
 
 export default function PickTactic({ userId, onTacticSelected }: PickTacticProps) {
+  const { language } = useLanguage();
   const [tactics, setTactics] = useState<Tactic[]>([]);
   const [selectedTactic, setSelectedTactic] = useState<string | null>(null);
+  const [initialTacticId, setInitialTacticId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [hasTeam, setHasTeam] = useState(false);
+  const [playersLocked, setPlayersLocked] = useState(false);
+
+  const tacticLocked = initialTacticId !== null;
 
   useEffect(() => {
     checkTeamSelection();
     loadTactics();
     loadUserSelection();
-  }, []);
+  }, [userId]);
 
   const checkTeamSelection = async () => {
     const { data } = await supabase
       .from('user_profiles')
-      .select('selected_team_id')
+      .select('selected_team_id, players_locked')
       .eq('id', userId)
       .maybeSingle();
 
     setHasTeam(!!data?.selected_team_id);
+    setPlayersLocked(!!data?.players_locked);
   };
 
   const loadTactics = async () => {
@@ -60,10 +68,16 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
 
     if (data) {
       setSelectedTactic(data.tactic_id);
+      setInitialTacticId(data.tactic_id);
     }
   };
 
   const handleSelectTactic = async (tacticId: string) => {
+    if (tacticLocked) {
+      alert(getTranslation('dashboard.tacticLockedMessage', language));
+      return;
+    }
+
     if (!hasTeam) {
       alert('Please select your team first!');
       return;
@@ -108,6 +122,7 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
     }
 
     setSuccess(true);
+    setInitialTacticId(tacticId);
     setTimeout(() => {
       setSuccess(false);
     }, 2000);
@@ -161,6 +176,18 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
           </div>
         )}
 
+        {tacticLocked && (
+          <div className="mb-6 bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4 flex items-center gap-3 max-w-2xl mx-auto">
+            <Lock className="w-6 h-6 text-yellow-400" />
+            <div className="text-left">
+              <div className="text-yellow-300 font-bold">Tactical System Locked</div>
+              <div className="text-yellow-200 text-sm">
+                {getTranslation('dashboard.tacticLockedMessage', language)}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="text-center mb-12">
           <h1 className="text-5xl font-bold text-white mb-4">Choose Your Tactical System</h1>
           <p className="text-slate-300 text-lg max-w-2xl mx-auto">
@@ -186,12 +213,12 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
             <button
               key={tactic.id}
               onClick={() => handleSelectTactic(tactic.id)}
-              disabled={saving}
+              disabled={saving || tacticLocked || !hasTeam}
               className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 ${
                 selectedTactic === tactic.id
                   ? 'bg-emerald-500/20 border-emerald-500 shadow-lg shadow-emerald-500/20 scale-105'
                   : 'bg-slate-800/50 border-slate-700 hover:border-slate-600 hover:bg-slate-800/70 hover:scale-105'
-              }`}
+              } ${(saving || tacticLocked || !hasTeam) ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {selectedTactic === tactic.id && (
                 <div className="absolute -top-2 -right-2">
@@ -203,42 +230,28 @@ export default function PickTactic({ userId, onTacticSelected }: PickTacticProps
 
               <div className="text-center">
                 <div className={`text-2xl font-bold mb-3 transition-colors ${
-                  selectedTactic === tactic.id ? 'text-emerald-400' : 'text-white group-hover:text-emerald-400'
+                  selectedTactic === tactic.id ? 'text-emerald-400' : 'text-white'
                 }`}>
                   {tactic.name}
                 </div>
-                <p className="text-slate-400 text-xs leading-relaxed">
-                  {tactic.description}
-                </p>
+                <p className="text-slate-300 text-sm line-clamp-3">{tactic.description}</p>
               </div>
             </button>
           ))}
         </div>
 
-        {filteredTactics.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-slate-400 text-lg">No tactical systems found matching your search.</p>
-          </div>
-        )}
-
-        {success && (
-          <div className="mb-6 bg-green-500/20 border border-green-500 text-green-200 px-4 py-3 rounded-lg text-center flex items-center justify-center gap-2">
-            <CheckCircle2 className="w-5 h-5" />
-            Tactic saved successfully!
-          </div>
-        )}
-
-        {selectedTactic && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleContinue}
-              disabled={saving}
-              className="px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold rounded-xl transition-all duration-300 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
-            >
-              {saving ? 'Saving...' : 'Continue to Dashboard'}
-            </button>
-          </div>
-        )}
+        <div className="max-w-md mx-auto text-center">
+          {success && (
+            <div className="mb-4 text-emerald-300 font-semibold">Tactical system saved!</div>
+          )}
+          <button
+            onClick={handleContinue}
+            disabled={!selectedTactic}
+            className="w-full py-3 rounded-xl bg-emerald-500 text-blue-900 font-bold hover:bg-emerald-400 transition-all disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed"
+          >
+            Continue
+          </button>
+        </div>
       </div>
     </div>
   );
