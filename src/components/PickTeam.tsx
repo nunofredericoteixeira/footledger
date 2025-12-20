@@ -26,31 +26,6 @@ export default function PickTeam({ userId, onComplete }: PickTeamProps) {
     loadTeams();
   }, []);
 
-  useEffect(() => {
-    loadProfile();
-  }, [userId]);
-
-  const loadProfile = async () => {
-    try {
-      const { data, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('selected_team_id, players_locked')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profileError) throw profileError;
-
-      if (data) {
-        setSelectedTeamId(data.selected_team_id);
-        setPlayersLocked(!!data.players_locked);
-      } else {
-        setPlayersLocked(false);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load your current team selection');
-    }
-  };
-
   const loadTeams = async () => {
     setLoading(true);
     try {
