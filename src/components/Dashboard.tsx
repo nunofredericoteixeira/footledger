@@ -39,13 +39,16 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
   const [showLanguageMenu, setShowLanguageMenu] = useState(false);
   const [welcomeName, setWelcomeName] = useState<string>('');
   const [showWelcome, setShowWelcome] = useState(true);
+  const teamSelectionOpen = teamPeriod.isOpen || !playersLocked;
+  const tacticSelectionOpen = tacticPeriod.isOpen || !playersLocked;
   const playersSelectionOpen = playersPeriod.isOpen || !playersLocked;
+  const canNavigateToTeam = teamSelectionOpen;
+  const canNavigateToTactic = hasTeam && tacticSelectionOpen;
   const canNavigateToPlayers = hasTactic && playersSelectionOpen;
-  const playersStatusMessage = playersPeriod.isOpen
-    ? playersPeriod.message
-    : !playersLocked
-      ? getTranslation('dashboard.initialSquadOpen', language)
-      : playersPeriod.message;
+  const fallbackMessage = getTranslation('dashboard.initialSquadOpen', language);
+  const teamStatusMessage = teamPeriod.isOpen ? teamPeriod.message : (!playersLocked ? fallbackMessage : teamPeriod.message);
+  const tacticStatusMessage = tacticPeriod.isOpen ? tacticPeriod.message : (!playersLocked ? fallbackMessage : tacticPeriod.message);
+  const playersStatusMessage = playersPeriod.isOpen ? playersPeriod.message : (!playersLocked ? fallbackMessage : playersPeriod.message);
 
   useEffect(() => {
     checkUserSelections();
@@ -281,10 +284,10 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
 
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <button
-            onClick={onNavigateToTeam}
-            disabled={!teamPeriod.isOpen && hasTeam}
+            onClick={canNavigateToTeam ? onNavigateToTeam : undefined}
+            disabled={!canNavigateToTeam}
             className={`relative bg-black/60 backdrop-blur-md border-2 rounded-xl p-6 md:p-8 transition-all ${
-              teamPeriod.isOpen || !hasTeam
+              canNavigateToTeam
                 ? 'border-cyan-400 hover:bg-black/70 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/50'
                 : 'border-gray-600 opacity-60 cursor-not-allowed'
             }`}
@@ -305,29 +308,29 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
             <p className="text-sm md:text-base text-cyan-200 mb-4">{getTranslation('dashboard.selectFavoriteTeam', language)}</p>
 
             <div className={`flex items-start gap-2 px-3 py-2 rounded-lg ${
-              teamPeriod.isOpen ? 'bg-green-500/20' : 'bg-red-500/20'
+              teamSelectionOpen ? 'bg-green-500/20' : 'bg-red-500/20'
             }`}>
-              {teamPeriod.isOpen ? (
+              {teamSelectionOpen ? (
                 <Clock className="w-4 h-4 md:w-5 md:h-5 text-green-300 animate-pulse flex-shrink-0 mt-0.5" />
               ) : (
                 <Lock className="w-4 h-4 md:w-5 md:h-5 text-red-300 flex-shrink-0 mt-0.5" />
               )}
               <div className="flex-1 min-w-0">
-                <p className={`font-bold text-xs md:text-sm ${teamPeriod.isOpen ? 'text-green-300' : 'text-red-300'}`}>
-                  {teamPeriod.isOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
+                <p className={`font-bold text-xs md:text-sm ${teamSelectionOpen ? 'text-green-300' : 'text-red-300'}`}>
+                  {teamSelectionOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
                 </p>
-                <p className={`text-xs ${teamPeriod.isOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
-                  {teamPeriod.message}
+                <p className={`text-xs ${teamSelectionOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
+                  {teamStatusMessage}
                 </p>
               </div>
             </div>
           </button>
 
           <button
-            onClick={hasTeam ? onNavigateToTactic : undefined}
-            disabled={!hasTeam || (!tacticPeriod.isOpen && hasTactic)}
+            onClick={canNavigateToTactic ? onNavigateToTactic : undefined}
+            disabled={!canNavigateToTactic}
             className={`relative bg-black/60 backdrop-blur-md border-2 rounded-xl p-6 md:p-8 transition-all ${
-              hasTeam && (tacticPeriod.isOpen || !hasTactic)
+              canNavigateToTactic
                 ? 'border-cyan-400 hover:bg-black/70 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/50'
                 : 'border-gray-600 opacity-60 cursor-not-allowed'
             }`}
@@ -350,19 +353,19 @@ function Dashboard({ userId, onNavigateToTeam, onNavigateToTactic, onNavigateToP
             </p>
 
             <div className={`flex items-start gap-2 px-3 py-2 rounded-lg ${
-              tacticPeriod.isOpen ? 'bg-green-500/20' : 'bg-red-500/20'
+              tacticSelectionOpen ? 'bg-green-500/20' : 'bg-red-500/20'
             }`}>
-              {tacticPeriod.isOpen ? (
+              {tacticSelectionOpen ? (
                 <Clock className="w-4 h-4 md:w-5 md:h-5 text-green-300 animate-pulse flex-shrink-0 mt-0.5" />
               ) : (
                 <Lock className="w-4 h-4 md:w-5 md:h-5 text-red-300 flex-shrink-0 mt-0.5" />
               )}
               <div className="flex-1 min-w-0">
-                <p className={`font-bold text-xs md:text-sm ${tacticPeriod.isOpen ? 'text-green-300' : 'text-red-300'}`}>
-                  {tacticPeriod.isOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
+                <p className={`font-bold text-xs md:text-sm ${tacticSelectionOpen ? 'text-green-300' : 'text-red-300'}`}>
+                  {tacticSelectionOpen ? getTranslation('dashboard.openNow', language) : getTranslation('dashboard.closed', language)}
                 </p>
-                <p className={`text-xs ${tacticPeriod.isOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
-                  {tacticPeriod.message}
+                <p className={`text-xs ${tacticSelectionOpen ? 'text-green-200' : 'text-red-200'} break-words`}>
+                  {tacticStatusMessage}
                 </p>
               </div>
             </div>
